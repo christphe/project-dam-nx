@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] - minor
+
+### Changed
+- Faster rendering of busy scenes: vertex data goes to the GPU through one streaming buffer instead of a new buffer per draw, about three times cheaper per draw on the console
+
 All notable changes to Project Dam, the Nintendo Switch port of the
 [GoldenEye 007 PC port](https://github.com/jkdansereau/goldeneye-pc-port).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
