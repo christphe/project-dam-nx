@@ -199,15 +199,13 @@ int nxIsHandheld(void)
     return appletGetOperationMode() == AppletOperationMode_Handheld;
 }
 
-void nxLogThreadCore(const char *name, int id)
+void nxSetThreadCore(int idealCore)
 {
-    s32 prio = -1;
-    s32 core = -1;
-    u64 mask = 0;
-    svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-    svcGetThreadCoreMask(&core, &mask, CUR_THREAD_HANDLE);
-    sysLogPrintf(LOG_NOTE, "nxthread: %s %d on core %u (ideal %d, mask 0x%lx, prio 0x%x)", name, id,
-                 svcGetCurrentProcessorNumber(), core, mask, prio);
+    /* Cores 0..2 belong to the application; core 3 is the system's. */
+    Result rc = svcSetThreadCoreMask(CUR_THREAD_HANDLE, idealCore, 0x7);
+    if (R_FAILED(rc)) {
+        sysLogPrintf(LOG_WARNING, "nxthread: svcSetThreadCoreMask(%d, 0x7) failed (rc=0x%x)", idealCore, rc);
+    }
 }
 
 #endif /* PLATFORM_SWITCH */
