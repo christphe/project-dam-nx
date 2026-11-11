@@ -143,6 +143,10 @@ static int primary_display_index() {
     return 0;
 }
 
+#ifdef __SWITCH__
+extern "C" int nxIsHandheld(void);   /* project-dam: port/src/switch/nxmem.c */
+#endif
+
 static void gfx_sdl_init(const struct GfxWindowInitSettings *set) {
     window_width = set->width;
     window_height = set->height;
@@ -175,6 +179,21 @@ static void gfx_sdl_init(const struct GfxWindowInitSettings *set) {
     // the desktop" rather than the 640x480 native res. Fit a 4:3 window into
     // ~85% of the primary desktop -- big enough to actually judge mouse/menu
     // behaviour, and 4:3 so the pointer maps onto the render with no letterbox.
+#ifdef __SWITCH__
+    // project-dam: one fullscreen surface at the console's output mode;
+    // windows make no sense here. SDL reports 1920x1080 even handheld, where
+    // the panel is 1280x720 and the GPU runs at about half the docked clock:
+    // rendering 1080p there cost up to 35 ms of GPU per frame on hardware.
+    {
+        if (nxIsHandheld()) {
+            window_width = 1280;
+            window_height = 720;
+        } else {
+            window_width = 1920;
+            window_height = 1080;
+        }
+    }
+#endif
     if (window_width <= 0 || window_height <= 0) {
         SDL_DisplayMode dm;
         if (SDL_GetDesktopDisplayMode(primary_display_index(), &dm) == 0 && dm.w > 0 && dm.h > 0) {
@@ -231,6 +250,17 @@ static void gfx_sdl_init(const struct GfxWindowInitSettings *set) {
         flags |= SDL_WINDOW_MAXIMIZED;
         maximized_state = true;
     }
+
+#ifdef __SWITCH__
+    // project-dam: the Switch window always covers the screen; SDL sizes its
+    // surface from the window size, so no fullscreen/maximized flag (the ini's
+    // Video.Fullscreen would bring in the 1920x1080 desktop mode, even
+    // handheld). RESIZABLE stays: SDL's switch backend then resizes the window
+    // itself on dock/undock (1920x1080 / 1280x720).
+    flags &= ~(Uint32)(SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_MAXIMIZED);
+    maximized_state = false;
+    fullscreen_state = true;
+#endif
 
 #ifdef SDL_WINDOW_ALLOW_HIGHDPI
     if (set->allow_hidpi) {
@@ -298,6 +328,17 @@ static void gfx_sdl_init(const struct GfxWindowInitSettings *set) {
     }
 
     SDL_GL_MakeCurrent(wnd, ctx);
+#ifdef __SWITCH__
+    {   // project-dam: the surface SDL created (720p handheld, 1080p docked)
+        int ww = 0, wh = 0, dw = 0, dh = 0;
+        SDL_DisplayMode dm = {};
+        SDL_GetWindowSize(wnd, &ww, &wh);
+        SDL_GL_GetDrawableSize(wnd, &dw, &dh);
+        SDL_GetCurrentDisplayMode(0, &dm);
+        sysLogPrintf(LOG_NOTE, "SDL(switch): requested %dx%d, window %dx%d, drawable %dx%d, display %dx%d",
+                     window_width, window_height, ww, wh, dw, dh, dm.w, dm.h);
+    }
+#endif
 #if defined(__APPLE__)
     gfx_sdl_apply_swap_interval(1);   /* D952 */
 #else

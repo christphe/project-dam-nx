@@ -1183,6 +1183,13 @@ int videoInit(void)
 
     /* MSAA: snap the requested sample count down to a supported power of two. */
     gfx_msaa_level = cfgMSAA >= 16 ? 16 : cfgMSAA >= 8 ? 8 : cfgMSAA >= 4 ? 4 : cfgMSAA >= 2 ? 2 : 1;
+#ifdef __SWITCH__
+    /* project-dam: the MSAA resolve to the window squeezes the image into the
+     * left half of the screen on Switch (seen with 2x on hardware and in
+     * Ryujinx; MSAA=1 fills the screen), and MSAA is costly on this GPU anyway.
+     * Off until the resolve is fixed; the menu row is hidden. */
+    gfx_msaa_level = 1;
+#endif
 
     int winW = cfgWinW > 0 ? cfgWinW : 0;   /* 0 -> gfx_sdl2 auto-fits to the desktop */
     int winH = cfgWinH > 0 ? cfgWinH : 0;
