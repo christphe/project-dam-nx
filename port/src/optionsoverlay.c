@@ -456,7 +456,11 @@ static struct Row rows[] = {
      * hidden on the Game page. The front options screen still lists them here. */
     { .key="__SepHub", .label="", .kind=ROW_ACTION, .hub=1 },
     /* D293: in-game quit; not config-backed. */
+#if defined(__SWITCH__)
+    { .key="__QuitToDesktop", .label="Quit Game", .kind=ROW_ACTION, .hub=1 },
+#else
     { .key="__QuitToDesktop", .label="Quit to Desktop", .kind=ROW_ACTION, .hub=1 },
+#endif
     /* D443: orderly quit (D344) + relaunch, so "(restart)" rows like
      * Anti-aliasing can be applied without leaving the game by hand. */
     { .key="__RestartGame", .label="Restart Game", .kind=ROW_ACTION, .hub=1 },
@@ -1086,6 +1090,8 @@ static int rowPlatformOk(const struct Row *r)
     static const char *const kDesktopOnly[] = {
         "Video.Fullscreen", "Video.FullscreenMode", "__CenterWindow", "__Resolution",
         "Video.MSAA",   /* forced off on Switch (port/src/video.c) */
+        "__RestartGame",   /* no self-relaunch on Switch (sysRelaunchSelf) */
+        "Game.CheckUpdates", "__UpdateOpen",   /* update check is stubbed out */
         NULL,
     };
     for (int k = 0; kDesktopOnly[k]; k++) {

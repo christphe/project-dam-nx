@@ -6,6 +6,7 @@
 #if defined(PLATFORM_SWITCH)
 
 #include <malloc.h>
+#include <stdio.h>
 #include <string.h>
 #include <switch.h>
 
@@ -197,6 +198,30 @@ void nxUnmapFixed(uintptr_t addr)
 int nxIsHandheld(void)
 {
     return appletGetOperationMode() == AppletOperationMode_Handheld;
+}
+
+void nxExitProcess(void)
+{
+    sysLogPrintf(LOG_INFO, "nxmem: exiting process");
+    fflush(NULL);
+    /* A process that just vanishes is, to AM, a crash: HOME shows "The
+     * software was closed". The end AM expects for an application is
+     * ISelfController::Exit (command 0), the request libnx's own teardown
+     * sends before it waits to be ended. Sent while the applet session is
+     * still open; AM then ends the process. If the request fails, or AM has
+     * not ended it within 3 s, the kernel does (emulators ignore Exit). (Same fix as dusklight's
+     * switch_startup.cpp end_process_via_am.) */
+    AppletType type = appletGetAppletType();
+    if (type == AppletType_Application || type == AppletType_SystemApplication) {
+        Service *self = appletGetServiceSession_SelfController();
+        if (self != NULL && serviceIsActive(self) && R_SUCCEEDED(serviceDispatch(self, 0))) {
+            for (int i = 0; i < 30; i++) {
+                svcSleepThread(100000000LL);
+            }
+        }
+    }
+    svcExitProcess();
+    __builtin_unreachable();
 }
 
 void nxSetThreadCore(int idealCore)
