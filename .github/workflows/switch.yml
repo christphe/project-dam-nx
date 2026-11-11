@@ -35,7 +35,7 @@ jobs:
             cmake git ninja-build python3 zip
           git config --system --add safe.directory '*'
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Version
         id: version
@@ -57,7 +57,7 @@ jobs:
       - name: Package
         run: sh tools/switch/package_release.sh ${{ steps.version.outputs.version }} dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: project-dam-${{ steps.version.outputs.version }}
           path: dist/project-dam-${{ steps.version.outputs.version }}.zip
@@ -70,9 +70,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
