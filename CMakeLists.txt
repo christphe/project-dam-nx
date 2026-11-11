@@ -24,7 +24,8 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 # (GCC does hard-error on the one struct that declares a member with the same
 # name as an inherited one — CCTVRecord's `pad` — see docs/internals.md.)
 # An explicit -DCMAKE_C_COMPILER=... always wins.
-if(NOT DEFINED CMAKE_C_COMPILER)
+# goldeneye-nx hook: a cross toolchain file (Switch) picks its own compilers.
+if(NOT DEFINED CMAKE_C_COMPILER AND NOT CMAKE_TOOLCHAIN_FILE)
   if(CMAKE_HOST_APPLE)
     # Homebrew installs real GNU GCC with a version suffix; /usr/bin/gcc is
     # Apple Clang and does not support the Plan 9 struct extensions required
@@ -87,6 +88,9 @@ endif()
 # ASM is needed for the generated absolute ROM asset symbols
 # (port/src/romassets_<region>.s, see scripts/gen_romassets.py).
 project(ge007 C CXX ASM)
+
+# goldeneye-nx hook: Nintendo Switch build (sets GE_SWITCH; see the file).
+include(SwitchPort)
 
 # Debug gate: validate every u32 -> host-pointer conversion against the regions
 # the port actually maps, and report offenders at the conversion site with a
@@ -154,7 +158,9 @@ else()
   set(PORT_ADDR_BASE 0x0 CACHE STRING "Host base of the N64 address window")
 endif()
 
-if(WIN32)
+if(GE_SWITCH)
+  set(TARGET_OS "switch")   # goldeneye-nx hook
+elseif(WIN32)
   set(TARGET_OS "windows")
 elseif(APPLE)
   set(TARGET_OS "osx")
@@ -281,6 +287,16 @@ if(_PORT_GCC_STDDEF AND EXISTS "${_PORT_GCC_STDDEF}")
 else()
   get_filename_component(PORT_HOST_STDDDEF_H "${_PORT_GCC_DIR}/../include/stddef.h" ABSOLUTE)
 endif()
+switch_host_headers()   # goldeneye-nx hook: newlib header paths
+configure_file(
+  "${CMAKE_SOURCE_DIR}/port/include/hoststring.h.in"
+  "${CMAKE_BINARY_DIR}/port/include/hoststring.h" @ONLY)
+configure_file(
+  "${CMAKE_SOURCE_DIR}/port/include/hostsched.h.in"
+  "${CMAKE_BINARY_DIR}/port/include/hostsched.h" @ONLY)
+configure_file(
+  "${CMAKE_SOURCE_DIR}/port/include/hoststdlib.h.in"
+  "${CMAKE_BINARY_DIR}/port/include/hoststdlib.h" @ONLY)
 configure_file(
   "${CMAKE_SOURCE_DIR}/port/include/hoststddef.h.in"
   "${CMAKE_BINARY_DIR}/port/include/hoststddef.h" @ONLY)
@@ -397,7 +413,12 @@ endif()
 # garbage. With DYNAMICBASE disabled the image loads at its preferred base
 # (0x140000000) and the relocations are no-ops. main.c sanity-checks the load
 # base at startup.
-if(MINGW)
+if(GE_SWITCH)
+  # goldeneye-nx hook: an NRO is always PIE (hbloader loads it at a random
+  # address). The absolute symbols must therefore be reached through the GOT,
+  # which keeps their absolute value; port/src/switch/ places the N64 blocks
+  # at those exact addresses at startup.
+elseif(MINGW)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--disable-dynamicbase")
 elseif(UNIX AND NOT APPLE)
   # Linux equivalent of the ASLR-off requirement above: dram_syms.s defines
@@ -468,6 +489,9 @@ include_directories(
 # ----------------------------------------------------------------------------
 set(LIBS "")
 
+if(GE_SWITCH)
+  switch_dependencies()   # goldeneye-nx hook: SDL2/zlib from switch portlibs
+else()
 find_package(SDL2 REQUIRED)
 include_directories(SYSTEM "${SDL2_INCLUDE_DIR}")
 list(APPEND LIBS "${SDL2_LIBRARY}")
@@ -477,6 +501,7 @@ if(ZLIB_INCLUDE_DIR)
   include_directories(SYSTEM "${ZLIB_INCLUDE_DIR}")
 endif()
 list(APPEND LIBS "${ZLIB_LIBRARY}")
+endif()
 
 # Real <zlib.h> for port/src/rzdecomp.c (which backs decompressdata() with real
 # zlib). The game's own src/game/zlib.h sits on the -I path and shadows a plain
@@ -495,7 +520,11 @@ configure_file(
   "${CMAKE_SOURCE_DIR}/port/include/realzlib.h.in"
   "${CMAKE_BINARY_DIR}/port/include/realzlib.h" @ONLY)
 
-if(NOT GL_LIBRARY)
+if(GE_SWITCH)
+  # goldeneye-nx hook: GL comes from mesa through SDL2::SDL2's link interface.
+  set(GL_LIBRARY "")
+  set(EXTRA_LIBRARIES stdc++)
+elseif(NOT GL_LIBRARY)
   if(WIN32)
     set(GL_LIBRARY opengl32)
   elseif(APPLE)
@@ -809,6 +838,7 @@ set(BIN_NAME "ge007${BIN_REGION}.${TARGET_ARCH}")
 add_executable(ge007 ${SRC})
 target_link_libraries(ge007 ${LIBS})
 set_target_properties(ge007 PROPERTIES OUTPUT_NAME "${BIN_NAME}")
+switch_package(ge007)   # goldeneye-nx hook: .nro (no-op off Switch)
 if(WIN32)
   set_target_properties(ge007 PROPERTIES WIN32_EXECUTABLE TRUE)
   # Explorer/taskbar icon: the original crosshair mark (cmake/icon/ge007.rc,

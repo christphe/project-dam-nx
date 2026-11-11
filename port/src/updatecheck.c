@@ -120,6 +120,10 @@ static int fetchLatest(char *buf, size_t cap)
     FreeLibrary(dll);
     buf[len] = 0;
     return ok;
+#elif defined(__SWITCH__)
+    /* project-dam: no curl / popen on the console; no update check. */
+    (void)buf; (void)cap; (void)len;
+    return 0;
 #else
     FILE *f = popen("curl -q -fsS --proto =https --max-time 5 -A '" UC_UA "' '" UC_URL "' 2>/dev/null", "r");
     if (!f) return 0;

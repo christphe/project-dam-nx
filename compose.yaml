@@ -1,0 +1,39 @@
+# project-dam builds (see Dockerfile.build). No ROM is needed to build: the
+# ROM asset symbols are pre-generated (port/src/romassets_<region>.s) and the
+# game reads the user's ROM at run time.
+#
+#   docker compose build                 # once
+#   docker compose run --rm linux        # Linux reference build -> build-linux/
+#   docker compose run --rm switch       # Switch build -> build-switch/
+#   docker compose run --rm shell        # interactive shell in the toolchain
+services:
+  linux:
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    image: local/project-dam-build:latest
+    working_dir: /src
+    volumes:
+      - .:/src
+    command:
+      - sh
+      - -c
+      - cmake -S . -B build-linux -G Ninja -DROMID=ntsc-final && cmake --build build-linux
+  switch:
+    image: local/project-dam-build:latest
+    working_dir: /src
+    volumes:
+      - .:/src
+    command:
+      - sh
+      - -c
+      - >-
+        cmake -S . -B build-switch -G Ninja -DROMID=ntsc-final
+        -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/Switch.cmake
+        && cmake --build build-switch
+  shell:
+    image: local/project-dam-build:latest
+    working_dir: /src
+    volumes:
+      - .:/src
+    entrypoint: ["bash"]

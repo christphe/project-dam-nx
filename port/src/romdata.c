@@ -27,7 +27,10 @@ extern int snprintf(char *str, size_t maxsize, const char *format, ...);
 
 #include "platform.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_SWITCH)
+  /* project-dam: fixed-address placement through nxmem (no mmap). */
+  #include "nxmem.h"
+#elif defined(PLATFORM_WINDOWS)
   #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
   #endif
@@ -383,7 +386,18 @@ int romdataInit(void)
          * romdataGetRom()/the PI shims, will read wrong memory). */
         {
             u32 maplen = romSize + sideTotal + cgTotal;
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_SWITCH)
+            if (nxMapFixed(CART_HOST, maplen)) {
+                mappedLen = maplen;
+                return romdataFinishCartMap(tok, img, sideTotal, cgTotal);
+            }
+            /* Same reasoning as the Windows D179 tail: the game cannot run
+             * from a heap copy, so stop with a diagnosis (nxmem logged why). */
+            sysLogPrintf(LOG_ERROR, "romdataInit: could not place the ROM at 0x%08X "
+                         "(%u bytes); aborting boot", CART_BASE, maplen);
+            free(img);
+            return -1;
+#elif defined(PLATFORM_WINDOWS)
             void *at = VirtualAlloc((LPVOID)CART_HOST, maplen,
                                     MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
             if (at == (void *)CART_HOST)
@@ -467,7 +481,10 @@ int romdataInit(void)
 void romdataDestroy(void)
 {
     if (mappedAtCartBase) {
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_SWITCH)
+        nxUnmapFixed(CART_HOST);
+        mappedLen = 0;
+#elif defined(PLATFORM_WINDOWS)
         VirtualFree((LPVOID)CART_HOST, 0, MEM_RELEASE);
 #else
         munmap((void *)CART_HOST, (size_t)mappedLen);

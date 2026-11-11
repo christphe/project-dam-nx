@@ -63,3 +63,12 @@ typedef __WCHAR_TYPE__ wchar_t;
 #endif
 #endif
 #endif
+
+/* project-dam (Switch, newlib): newlib's <sys/_types.h> / <wchar.h> get
+ * wint_t from <stddef.h> under __need_wint_t. That include lands here (C) or
+ * has __need_wint_t cleared above (C++), so provide it from the builtin, with
+ * the same guard GCC's own <stddef.h> uses. */
+#if defined(__SWITCH__) && !defined(_WINT_T)
+#define _WINT_T
+typedef __WINT_TYPE__ wint_t;
+#endif

@@ -156,6 +156,14 @@ static int rcRunConverter(const char *exePath, const char *rom, const char *out)
     free(wcmd);
     return rc;
 }
+#elif defined(__SWITCH__)
+/* project-dam: Horizon cannot spawn the external converter. The sidecars
+ * are generated on a PC (prepare-assets) and copied next to the NRO. */
+static int rcRunConverter(const char *exePath, const char *rom, const char *out)
+{
+    (void)exePath; (void)rom; (void)out;
+    return -1;
+}
 #else
 static int rcRunConverter(const char *exePath, const char *rom, const char *out)
 {

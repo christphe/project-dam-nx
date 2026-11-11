@@ -12,7 +12,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(__SWITCH__)
+  /* project-dam: Nintendo Switch homebrew (devkitA64 + libnx, newlib). */
+  #define PLATFORM_SWITCH 1
+#elif defined(_WIN32) || defined(_WIN64)
   #define PLATFORM_WINDOWS 1
 #elif defined(__APPLE__)
   #include <TargetConditionals.h>

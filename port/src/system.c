@@ -11,6 +11,10 @@
 
 #include "platform.h"
 
+#if defined(PLATFORM_SWITCH)
+  #include <switch.h>   /* project-dam: svcQueryMemory (sysImageBase) */
+#endif
+
 #if defined(PLATFORM_WINDOWS)
   #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
@@ -60,7 +64,22 @@ uint64_t sysGetMicroseconds(void)
 
 uintptr_t sysImageBase(void)
 {
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_SWITCH)
+    /* project-dam: hbloader loads the NRO at a random address above 4 GiB.
+     * libnx's `__start__` cannot be used: it is an ABSOLUTE symbol (0, the
+     * link address), so it is never relocated. The code segment comes first
+     * in the image, so the memory block holding this very function starts at
+     * the load address. */
+    static uintptr_t base = 0;
+    if (!base) {
+        MemoryInfo mi;
+        u32 pi;
+        if (R_SUCCEEDED(svcQueryMemory(&mi, &pi, (u64)(uintptr_t)&sysImageBase))) {
+            base = (uintptr_t)mi.addr;
+        }
+    }
+    return base;
+#elif defined(PLATFORM_WINDOWS)
     return (uintptr_t)GetModuleHandleW(NULL);
 #elif defined(PLATFORM_MACOS)
     /* The mach_header of the main image == its load address. Unlike Windows
@@ -95,6 +114,12 @@ static void getExeDir(char *buf, size_t buflen)
         char *slash = strrchr(buf, '/');
         if (slash) *slash = 0; else buf[0] = 0;
     } else {
+        buf[0] = 0;
+    }
+#elif defined(PLATFORM_SWITCH)
+    /* project-dam: libnx starts the NRO with the CWD set to its own
+     * directory (e.g. sdmc:/switch/project-dam); no /proc on Horizon. */
+    if (!getcwd(buf, buflen)) {
         buf[0] = 0;
     }
 #else
@@ -287,6 +312,10 @@ int sysRelaunchSelf(void)
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     return 0;
+#elif defined(PLATFORM_SWITCH)
+    /* project-dam: no fork/exec on Horizon (envSetNextLoad could relaunch
+     * the NRO later); callers treat -1 as "relaunch unavailable". */
+    return -1;
 #else
     if (!g_argv || g_argc <= 0) return -1;
     char exe[4096];

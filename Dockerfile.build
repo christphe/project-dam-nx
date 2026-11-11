@@ -1,0 +1,25 @@
+# project-dam build environment: Nintendo Switch cross-compilation + a Linux
+# reference build of the PC port.
+#
+# Reuses the locally built, pinned devkitPro environment of ../windwaker
+# (devkitA64, libnx, switch-sdl2, switch-mesa, switch-glad, CMake, Ninja,
+# Python). Build it there once with `docker compose build`.
+#
+# (The repository's own Dockerfile / docker-compose.yml are upstream's N64
+# matching-build environment and are left untouched.)
+FROM local/switchwakerhd-build:latest
+
+# Host (Linux) libraries for the reference PC build (docs/building.md).
+# No game files are copied into this image.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        libgl1-mesa-dev \
+        libsdl2-dev \
+        zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# The repository is bind-mounted at /src at runtime, so source changes need no
+# image rebuild. The base image's entrypoint is SwitchWakerHD's make_sd.py.
+ENTRYPOINT []
+WORKDIR /src

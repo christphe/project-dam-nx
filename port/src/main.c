@@ -130,6 +130,26 @@ void portAllUnlockedApply(void)
 
 int main(int argc, char **argv)
 {
+#if defined(PLATFORM_SWITCH)
+    /* project-dam: the port finds data/ (ROM, sidecars, ini, saves) relative
+     * to the CWD. hbloader starts the NRO in its own folder, but other
+     * launchers (Ryujinx, forwarders) use the SD root. If data/ is not here,
+     * move to the NRO's folder (argv[0]), else to the default install path. */
+    {
+        extern int chdir(const char *);
+        extern int access(const char *, int);
+        if (access("data", 0) != 0) {
+            char dir[512] = "";
+            if (argc > 0 && argv[0] && strchr(argv[0], '/')) {
+                snprintf(dir, sizeof(dir), "%s", argv[0]);
+                *strrchr(dir, '/') = 0;
+            }
+            if (!dir[0] || chdir(dir) != 0 || access("data", 0) != 0) {
+                chdir("sdmc:/switch/project-dam");
+            }
+        }
+    }
+#endif
     sysSetArgs(argc, argv);
 
     if (sysArgCheck("--version")) { portPrintVersion(); return 0; }
@@ -154,7 +174,6 @@ int main(int argc, char **argv)
      * crashInit so the reservation is in place for every later stage, and any
      * failure here is reported before SDL/GL are involved. */
     portAddrInit();
-
     /* Crash handler first, so any failure below is debuggable. */
     crashInit();
 

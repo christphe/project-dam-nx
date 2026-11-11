@@ -121,6 +121,10 @@ extern "C" {
 
 extern uintptr_t g_portImageBase;
 extern int g_portUseImageRel;
+#if defined(__SWITCH__)
+/* project-dam: set by port/src/dram.c when KSEG0 is folded onto V1 (nxmem.h). */
+extern int g_nxDramK0Folded;
+#endif
 
 /* D573: exact check, implemented in port/src/romdata.c (shift-aware via
  * the arena macros above). */
@@ -172,6 +176,13 @@ static inline void *portN64ToHost(uint32_t a)
     if (g_portUseImageRel && a >= 0x40000000u && a < 0x70000000u) {
         return (void *)(g_portImageBase + (uintptr_t)(a - 0x40000000u));
     }
+#if defined(__SWITCH__)
+    /* project-dam: when Horizon refuses a real KSEG0 mirror of the DRAM
+     * arena (port/src/dram.c), fold KSEG0 addresses onto the V1 view. */
+    if (g_nxDramK0Folded && a - (uint32_t)PORT_DRAM_K0_BASE < (uint32_t)PORT_DRAM_SIZE) {
+        a -= (uint32_t)(PORT_DRAM_K0_BASE - PORT_DRAM_V1_BASE);
+    }
+#endif
     return (void *)((uintptr_t)PORT_ADDR_BASE + (uintptr_t)a);
 }
 

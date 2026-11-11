@@ -548,6 +548,19 @@ void crashDumpThreads(const unsigned long *tids, const char **names, int count)
     }
 }
 
+#elif defined(PLATFORM_SWITCH)
+
+/* project-dam: no signals/backtrace() on Horizon. The watchdog still gets a
+ * thread roster in the log; a real libnx exception handler comes later. */
+void crashDumpThreads(const unsigned long *tids, const char **names, int count)
+{
+    sysLogPrintf(LOG_ERROR, "THREAD DUMP (%d live):", count);
+    for (int i = 0; i < count; ++i) {
+        sysLogPrintf(LOG_ERROR, "  tid=0x%lx  %s", tids ? tids[i] : 0UL,
+                     (names && names[i]) ? names[i] : "?");
+    }
+}
+
 #endif /* PLATFORM_WINDOWS / POSIX */
 
 int g_CrashEnabled = 0;

@@ -6,6 +6,13 @@ function(target_architecture OUT_VAR)
     # Derive from the cross-compiler target, e.g. x86_64-w64-mingw32-gcc
     string(REGEX MATCH "^(i[3-6]86|x86_64|aarch64|arm|powerpc|wasm32)" _arch
            "${CMAKE_C_COMPILER_TARGET}")
+    if(_arch STREQUAL "")
+      # project-dam: devkitA64's toolchain file leaves CMAKE_C_COMPILER_TARGET
+      # empty; the compiler itself knows (aarch64-none-elf).
+      execute_process(COMMAND "${CMAKE_C_COMPILER}" -dumpmachine
+                      OUTPUT_VARIABLE _dm OUTPUT_STRIP_TRAILING_WHITESPACE)
+      string(REGEX MATCH "^(i[3-6]86|x86_64|aarch64|arm|powerpc|wasm32)" _arch "${_dm}")
+    endif()
   elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "")
     # D515: a stripped native env (e.g. the build-pc.sh PowerShell re-exec
     # before it restored PROCESSOR_ARCHITECTURE) leaves

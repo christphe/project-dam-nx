@@ -403,9 +403,16 @@ void portKernelInit(void)
 void imThreadExitRelease(void);   /* D152: defined in the interrupt-mask section below */
 
 /* pthread entry wrapper. */
+#if defined(PLATFORM_SWITCH)
+#include "nxmem.h"   /* project-dam: nxLogThreadCore diagnostics */
+#endif
+
 static void *portThreadWrapper(void *arg)
 {
     PortThread *pt = (PortThread *)arg;
+#if defined(PLATFORM_SWITCH)
+    nxLogThreadCore("game thread", (int)pt->id);
+#endif
 
 #if defined(PLATFORM_WINDOWS)
     pt->tid = GetCurrentThreadId();
@@ -453,7 +460,34 @@ void osCreateThread(OSThread *t, OSId id, void (*entry)(void *), void *arg,
     t->state = OS_STATE_STOPPED;
 }
 
-#if !defined(_WIN32)
+#if defined(PLATFORM_SWITCH)
+#include "nxmem.h"
+/* project-dam: the same N64-window stack region as macOS
+ * ([0xA0000000, +512 MiB)), carved with nxmem (code memory) since Horizon has
+ * no mmap. libnx's threadCreate uses the given memory as-is for
+ * stack + reent + TLS, so the stack's host address keeps truncating to its N64
+ * address. Each stack is real memory (no overcommit on Horizon). */
+#define PORT_STACK_REGION_OFF  0xA0000000ULL
+#define PORT_STACK_REGION_SIZE (512ULL << 20)
+#define PORT_STACK_GUARD       0x4000ULL
+
+static uintptr_t s_stackNext = 0;
+
+static void *portAllocLowStack(size_t sz)
+{
+    const uintptr_t region = (uintptr_t)PORT_ADDR_BASE + PORT_STACK_REGION_OFF;
+    if (s_stackNext == 0)
+        s_stackNext = region;
+    const uintptr_t base = s_stackNext + PORT_STACK_GUARD;
+    if (base + sz > region + PORT_STACK_REGION_SIZE)
+        return NULL;
+    void *p = nxMapFixed(base, sz);
+    if (!p)
+        return NULL;
+    s_stackNext = base + sz;
+    return p;
+}
+#elif !defined(_WIN32)
 #include <sys/mman.h>
 /* The decomp aligns/compares stack-buffer pointers by truncating to u32
  * (e.g. `(u32)compbuffer` in image.c texLoad) — an N64 assumption. Windows
@@ -1926,6 +1960,9 @@ static void portInterpPresentBeforeDraw(uint64_t viUs)
 static void *portRenderWorker(void *arg)
 {
     (void)arg;
+#if defined(PLATFORM_SWITCH)
+    nxLogThreadCore("render worker", 0);
+#endif
     for (;;) {
         int presentDue = 0;
         pthread_mutex_lock(&s_rwLock);

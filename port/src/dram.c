@@ -50,7 +50,9 @@
 #include "system.h"
 #include "portaddr.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_SWITCH)
+#include "nxmem.h"
+#elif defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #else
 #define _GNU_SOURCE /* memfd_create — must precede all system headers */
@@ -67,7 +69,34 @@
 
 void *dramReserve(void)
 {
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_SWITCH)
+    /* project-dam: Horizon has no shared-memory mmap. Place the arena as code
+     * memory at the KSEG0 address and try to view it again at V1
+     * (svcMapProcessMemory, the libnx JIT technique). If Horizon refuses the
+     * second view, keep a single block at V1 and let portN64ToHost() fold
+     * KSEG0 addresses onto it (g_nxDramK0Folded). */
+    if (nxMapFixed(DRAM_K0_BASE, DRAM_SIZE)) {
+        if (nxMapAlias(DRAM_V1_BASE, DRAM_K0_BASE, DRAM_SIZE)) {
+            ((volatile char *)DRAM_V1_BASE)[0] = 0x5A;
+            if (((volatile char *)DRAM_K0_BASE)[0] == 0x5A) {
+                ((volatile char *)DRAM_V1_BASE)[0] = 0;
+                sysLogPrintf(LOG_NOTE, "dram: V1 0x%08lx / KSEG0 0x%08lx mirrored",
+                             (unsigned long)DRAM_V1_BASE, (unsigned long)DRAM_K0_BASE);
+                return (void *)DRAM_V1_BASE;
+            }
+            nxUnmapFixed(DRAM_V1_BASE);
+        }
+        nxUnmapFixed(DRAM_K0_BASE);
+    }
+    if (!nxMapFixed(DRAM_V1_BASE, DRAM_SIZE)) {
+        sysFatalError("dram: could not map DRAM at %p (see the log; a relaunch of the host game may help)",
+                      (void *)DRAM_V1_BASE);
+    }
+    g_nxDramK0Folded = 1;
+    sysLogPrintf(LOG_NOTE, "dram: V1 0x%08lx only; KSEG0 folded in software",
+                 (unsigned long)DRAM_V1_BASE);
+    return (void *)DRAM_V1_BASE;
+#elif defined(PLATFORM_WINDOWS)
     /* One anonymous section, two views at fixed addresses. */
     SECURITY_ATTRIBUTES sa;
     sa.nLength = sizeof(sa);
