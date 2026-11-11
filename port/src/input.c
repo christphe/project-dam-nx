@@ -809,6 +809,12 @@ static u8 padFamily[MAX_PADS];
 
 static void padDetectFamily(int seat)
 {
+#ifdef __SWITCH__
+    /* project-dam: every pad on the console is a Nintendo one (SDL reports the
+     * generic "Switch Controller" with an unknown type). */
+    padFamily[seat] = PADFAM_NINTENDO;
+    return;
+#endif
     padFamily[seat] = PADFAM_XBOX;
 #if SDL_VERSION_ATLEAST(2, 0, 12)
     switch (SDL_GameControllerGetType(pads[seat])) {
@@ -1116,6 +1122,19 @@ static int padDeadzoneR    = PAD_DZ_UNSET;    /* right (look) stick deadzone, ra
 static int padDeadzone     = STICK_DEADZONE;  /* legacy shared deadzone (Input.PadDeadzone) */
 static int padLookSensX    = 100;             /* right-stick look: horizontal sensitivity, % (100 = native) */
 static int padLookSensY    = 100;             /* right-stick look: vertical (pitch) sensitivity, % */
+/* project-dam: right stick while the game is in aim mode (R held / Toggle).
+ * The Joy-Con stick has a short throw, so the native linear map leaves no
+ * room for fine aim, and the small deflection a trigger press gives the
+ * thumb moves the crosshair. A response curve (gamma x100, 100 = linear)
+ * keeps small deflections under the game's own deadzone and gives the
+ * mid range fine control; the sensitivity (%) scales the result. */
+#if defined(PLATFORM_SWITCH)
+static int padAimSens      = 70;
+static int padAimCurve     = 200;
+#else
+static int padAimSens      = 100;
+static int padAimCurve     = 100;
+#endif
 static int padSouthpaw     = 0;               /* 1 = swap fire (G) / grenade (R) trigger actions */
 static int padLookSmooth   = 0;               /* right-stick look low-pass strength, 0-10 (0 = off, 10 = max) */
 static int padTriggerPct   = 25;              /* trigger press point, % of travel (~30*256) */
@@ -1714,6 +1733,23 @@ int inputInit(void)
                          SDL_GetError());
         }
     }
+
+#ifdef __SWITCH__
+    /* project-dam: devkitPro's SDL maps the console's own "Switch Controller"
+     * POSITIONALLY like an Xbox pad (a:b1 b:b0 x:b3 y:b2, i.e. the physical
+     * B button reports BUTTON_A). The port assumes SDL's default for Nintendo
+     * pads, GAMECONTROLLER_USE_BUTTON_LABELS=1 (BUTTON_A = the button printed
+     * "A"), so A/B and X/Y came out swapped. Re-register the same GUID with a
+     * by-label mapping before any pad is opened. */
+    if (SDL_GameControllerAddMapping(
+            "000038f853776974636820436f6e7400,Switch Controller,"
+            "a:b0,b:b1,x:b2,y:b3,back:b11,start:b10,"
+            "dpdown:b15,dpleft:b12,dpright:b14,dpup:b13,"
+            "leftshoulder:b6,rightshoulder:b7,lefttrigger:b8,righttrigger:b9,"
+            "leftstick:b4,rightstick:b5,leftx:a0,lefty:a1,rightx:a2,righty:a3,") < 0) {
+        sysLogPrintf(LOG_WARNING, "input: Switch label mapping rejected: %s", SDL_GetError());
+    }
+#endif
 
     /* D401: make BT PS4/PS5 pads report haptics (PD input.c:696-697). Must
      * be set before the pads below are opened. */
@@ -2996,6 +3032,16 @@ static unsigned inputComputePadSlot(int idx, signed char *stick_x, signed char *
             int rys = -scaleAxis(ry, padDeadzoneR);   /* SDL up = negative -> N64 up = positive */
             if (padLookSensX != 100 && rxs) rxs = rxs * padLookSensX / 100;
             if (padLookSensY != 100 && rys) rys = rys * padLookSensY / 100;
+            if ((padAimSens != 100 || padAimCurve != 100) && slotPlayer() != NULL &&
+                slotPlayer()->insightaimmode) {
+                const double g = padAimCurve / 100.0, k = padAimSens / 100.0;
+                double nx = fmin(1.0, fabs((double)rxs) / STICK_MAX);
+                double ny = fmin(1.0, fabs((double)rys) / STICK_MAX);
+                nx = pow(nx, g) * k * STICK_MAX;
+                ny = pow(ny, g) * k * STICK_MAX;
+                rxs = rxs < 0 ? -(int)lround(nx) : (int)lround(nx);
+                rys = rys < 0 ? -(int)lround(ny) : (int)lround(ny);
+            }
             if (rxs >  STICK_MAX) rxs =  STICK_MAX; else if (rxs < -STICK_MAX) rxs = -STICK_MAX;
             if (rys >  STICK_MAX) rys =  STICK_MAX; else if (rys < -STICK_MAX) rys = -STICK_MAX;
             if (idx == 0 && (rxs || rys)) s_aimDevMouse = 0;   /* D337: pad aim active */
@@ -4242,6 +4288,8 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
     configRegisterInt("Input.DefaultsRev", &inputDefaultsRev, 0, 1);   /* D546 */
     configRegisterInt("Input.PadLookSensX", &padLookSensX, 25, 200);   /* Wave A: look horizontal sensitivity (%) */
     configRegisterInt("Input.PadLookSensY", &padLookSensY, 25, 200);   /* Wave A: look vertical (pitch) sensitivity (%) */
+    configRegisterInt("Input.PadAimSens", &padAimSens, 25, 200);     /* project-dam: aim-mode stick sensitivity (%) */
+    configRegisterInt("Input.PadAimCurve", &padAimCurve, 100, 300);  /* project-dam: aim-mode stick curve, gamma x100 */
     configRegisterInt("Input.PadSouthpaw", &padSouthpaw, 0, 1);        /* Wave A: swap fire/grenade triggers */
     configRegisterInt("Input.PadLookSmooth", &padLookSmooth, 0, 10);   /* Wave A: look low-pass strength, 0-10 (0 = off) */
     configRegisterInt("Input.PadTriggerPct", &padTriggerPct, 1, 99);
