@@ -1,25 +1,38 @@
 # project-dam build environment: Nintendo Switch cross-compilation + a Linux
 # reference build of the PC port.
 #
-# Reuses the locally built, pinned devkitPro environment of ../windwaker
-# (devkitA64, libnx, switch-sdl2, switch-mesa, switch-glad, CMake, Ninja,
-# Python). Build it there once with `docker compose build`.
+#   docker compose build          # once
+#   docker compose run --rm switch
+#
+# devkitPro's devkitA64 image (pinned) carries devkitA64, libnx and the
+# Switch portlibs this port links (SDL2, mesa, zlib). The release workflow
+# (.github/workflows/switch.yml) builds in the same image.
 #
 # (The repository's own Dockerfile / docker-compose.yml are upstream's N64
 # matching-build environment and are left untouched.)
-FROM local/switchwakerhd-build:latest
+FROM docker.io/devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
 
-# Host (Linux) libraries for the reference PC build (docs/building.md).
+# CMake/Ninja for the build, Python for the asset converter (make_sd.sh), and
+# the host (Linux) libraries for the reference PC build (docs/building.md).
 # No game files are copied into this image.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential \
+        cmake \
+        git \
         libgl1-mesa-dev \
         libsdl2-dev \
+        ninja-build \
+        python3 \
+        zip \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
+ENV DEVKITPRO=/opt/devkitpro \
+    DEVKITA64=/opt/devkitpro/devkitA64 \
+    PATH=/opt/devkitpro/tools/bin:/opt/devkitpro/devkitA64/bin:${PATH}
+
 # The repository is bind-mounted at /src at runtime, so source changes need no
-# image rebuild. The base image's entrypoint is SwitchWakerHD's make_sd.py.
-ENTRYPOINT []
+# image rebuild.
+RUN git config --system --add safe.directory '*'
 WORKDIR /src

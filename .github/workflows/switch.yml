@@ -1,0 +1,99 @@
+name: Switch
+
+# Project Dam: builds the Nintendo Switch NRO on every push and pull request,
+# and publishes a GitHub release for a project-dam-vX.Y.Z tag, with the notes
+# taken from that version's section of CHANGELOG.md.
+#
+# (ci.yml and selfhosted.yml are upstream's desktop workflows; their release
+# job only reacts to upstream's own vX.Y.Z tags.)
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'project-dam-v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nro:
+    runs-on: ubuntu-24.04
+    # Same pinned image as Dockerfile.build: devkitA64, libnx and the Switch
+    # portlibs (SDL2, mesa, zlib).
+    container: docker.io/devkitpro/devkita64@sha256:1fc388c3a0d34bd2045a6dadcb1020e069d5f876a187fd705de14b4440c00282
+    steps:
+      - name: Tools
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            cmake git ninja-build python3 zip
+          git config --system --add safe.directory '*'
+
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/project-dam-v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/project-dam-v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev-$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: |
+          cmake -S . -B build-switch -G Ninja -DROMID=ntsc-final \
+            -DCMAKE_TOOLCHAIN_FILE=/opt/devkitpro/cmake/Switch.cmake \
+            -DPROJECT_DAM_VERSION=${{ steps.version.outputs.version }}
+          cmake --build build-switch
+
+      - name: Package
+        run: sh tools/switch/package_release.sh ${{ steps.version.outputs.version }} dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: project-dam-${{ steps.version.outputs.version }}
+          path: dist/project-dam-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/project-dam-v')
+    needs: nro
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#project-dam-v}"
+          {
+            printf "## What's Changed\n\n"
+            # This version's section of CHANGELOG.md, without its heading.
+            awk -v v="$version" '
+              $0 ~ "^## \\[" v "\\]" { on = 1; next }
+              on && /^## \[/ { exit }
+              on && /^\[.*\]: / { exit }
+              on { print }
+            ' CHANGELOG.md
+          } > notes.md
+          cat notes.md
+          gh release create "$tag" dist/*.zip \
+            --title "Project Dam v$version" --notes-file notes.md --latest
