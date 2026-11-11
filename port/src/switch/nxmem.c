@@ -193,6 +193,12 @@ void nxUnmapFixed(uintptr_t addr)
     }
 }
 
+/* 1 when the console runs handheld (built-in 1280x720 panel), 0 when docked. */
+int nxIsHandheld(void)
+{
+    return appletGetOperationMode() == AppletOperationMode_Handheld;
+}
+
 void nxLogThreadCore(const char *name, int id)
 {
     s32 prio = -1;

@@ -1077,6 +1077,24 @@ static int overlayStepSel(int pos, int dir)
     }
 }
 
+/* project-dam: rows that only make sense for a desktop window. */
+static int rowPlatformOk(const struct Row *r)
+{
+#if defined(__SWITCH__)
+    static const char *const kDesktopOnly[] = {
+        "Video.Fullscreen", "Video.FullscreenMode", "__CenterWindow", "__Resolution",
+        "Video.MSAA",   /* forced off on Switch (port/src/video.c) */
+        NULL,
+    };
+    for (int k = 0; kDesktopOnly[k]; k++) {
+        if (!strcmp(r->key, kDesktopOnly[k])) return 0;
+    }
+#else
+    (void)r;
+#endif
+    return 1;
+}
+
 static void overlayUpdateVisible(void)
 {
     s_visN = 0;
@@ -1093,7 +1111,7 @@ static void overlayUpdateVisible(void)
             if (rows[i].kind != ROW_BOND_FILE &&
                 !(rows[i].hidePtr && *rows[i].hidePtr) &&
                 (!rows[i].showPtr || *rows[i].showPtr == rows[i].shownValue) &&
-                rowSchemeOk(&rows[i]))
+                rowSchemeOk(&rows[i]) && rowPlatformOk(&rows[i]))
                 s_visIdx[s_visN++] = i;
         }
     }
