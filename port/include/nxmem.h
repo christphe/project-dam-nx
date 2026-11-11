@@ -42,6 +42,12 @@ void nxSetThreadCore(int idealCore);
  * mirror: portN64ToHost() then folds KSEG0 addresses onto V1 in software. */
 extern int g_nxDramK0Folded;
 
+/* End the process at once, every thread included, after flushing stdio.
+ * exit() would close the system services (applet, audio, nv) while the
+ * game's other threads still run, and the first of them to call one
+ * aborts (svcBreak). Called last from the clean-exit handler. */
+void nxExitProcess(void) __attribute__((noreturn));
+
 #ifdef __cplusplus
 }
 #endif

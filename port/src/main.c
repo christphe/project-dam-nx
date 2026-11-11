@@ -35,6 +35,9 @@
 #include "mixer.h"
 #include "crash.h"
 #include "thread_config.h"
+#if defined(PLATFORM_SWITCH)
+#include "nxmem.h"
+#endif
 #include "game/language.h" /* D295/M-148: JPN glyph-cache types + j_text_trigger */
 
 /* Defined in the game (src/init.c). The port calls into the real game entry. */
@@ -99,6 +102,9 @@ static void portAtExit(void)
             sysLogPrintf(LOG_ERROR, "restart: relaunch failed");
         }
     }
+#if defined(PLATFORM_SWITCH)
+    nxExitProcess();   /* project-dam: see nxmem.h */
+#endif
 }
 
 /* D257/D442: Game.AllUnlocked applies live. Called at boot and on every F10
