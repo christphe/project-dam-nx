@@ -37,6 +37,10 @@ macro(switch_dependencies)
   list(APPEND LIBS SDL2::SDL2 ZLIB::ZLIB m)
 endmacro()
 
+# Project Dam's own version (its releases are tagged project-dam-vX.Y.Z); the
+# release workflow passes it, local builds say dev-<commit>.
+set(PROJECT_DAM_VERSION "" CACHE STRING "Project Dam version shown in the homebrew menu")
+
 # NRO packaging: icon + NACP (title shown in the homebrew menu).
 macro(switch_package target)
   if(GE_SWITCH)
@@ -47,10 +51,13 @@ macro(switch_package target)
       PROPERTIES COMPILE_DEFINITIONS "strtol=n64_strtol")
     # Shown in the homebrew menu. Project Dam is a Switch port of the
     # GoldenEye 007 PC port (https://github.com/jkdansereau/goldeneye-pc-port).
+    if(NOT PROJECT_DAM_VERSION)
+      set(PROJECT_DAM_VERSION "dev-${VERSION_HASH}")
+    endif()
     nx_generate_nacp(ge007.nacp
       NAME    "Project Dam"
       AUTHOR  "Switch port of jkdansereau/goldeneye-pc-port"
-      VERSION "${GE007_VERSION}-${VERSION_HASH}")
+      VERSION "${PROJECT_DAM_VERSION}")
     set(_ge_nx_icon "${CMAKE_SOURCE_DIR}/port/switch/icon.jpg")
     if(NOT EXISTS "${_ge_nx_icon}")
       set(_ge_nx_icon "${NX_DEFAULT_ICON}")

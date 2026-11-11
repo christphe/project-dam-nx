@@ -1,4 +1,32 @@
 <p align="center">
+  <img src="port/switch/icon.jpg" width="112" alt="Project Dam">
+</p>
+
+<h1 align="center">Project Dam</h1>
+
+<p align="center">
+  GoldenEye 007 on the Nintendo Switch, as homebrew.
+</p>
+
+Project Dam is a Switch port of the [GoldenEye 007 PC port](https://github.com/jkdansereau/goldeneye-pc-port)
+by jkdansereau and contributors. It builds their port as a homebrew NRO with
+devkitA64 and libnx, and adds what the console needs: the N64 address window
+under Horizon, fullscreen at 1080p docked and 720p handheld, the Nintendo button
+layout, finer aim for the Joy-Con stick, and a clean return to the HOME menu.
+Unofficial, and no game content: you need your own US ROM.
+
+- **Download:** [latest release](../../releases/latest) (the archive's
+  `README.txt` has the install steps).
+- **Changes:** [CHANGELOG.md](CHANGELOG.md).
+- **Build:** `docker compose build`, then `docker compose run --rm switch`
+  (the NRO lands in `build-switch/`); the porting notes are in
+  [docs/switch/PLAN.md](docs/switch/PLAN.md).
+
+Everything below is the upstream README, about the PC port this one is built on.
+
+---
+
+<p align="center">
   <img src="docs/img/icon/ge007-icon.png" width="112" alt="GoldenEye 007 PC Port">
 </p>
 
