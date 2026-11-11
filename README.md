@@ -4,25 +4,42 @@
 
 <h1 align="center">Project Dam</h1>
 
-<p align="center">
-  GoldenEye 007 on the Nintendo Switch, as homebrew.
-</p>
+> A Nintendo Switch fork of the [GoldenEye 007 PC Port](https://github.com/jkdansereau/goldeneye-pc-port)
+> by [James Dansereau](https://github.com/jkdansereau) and its contributors.
 
-Project Dam is a Switch port of the [GoldenEye 007 PC port](https://github.com/jkdansereau/goldeneye-pc-port)
-by jkdansereau and contributors. It builds their port as a homebrew NRO with
-devkitA64 and libnx, and adds what the console needs: the N64 address window
-under Horizon, fullscreen at 1080p docked and 720p handheld, the Nintendo button
-layout, finer aim for the Joy-Con stick, and a clean return to the HOME menu.
-Unofficial, and no game content: you need your own US ROM.
+**Project Dam runs GoldenEye 007 (1997) on the Nintendo Switch, as homebrew.**
+The game itself, its fixes and its options are the upstream PC port's work,
+built from the [GoldenEye 007 decompilation](https://github.com/n64decomp/007).
+This fork compiles that port for the console (devkitA64, libnx) and adds what
+the Switch needs: the N64 address window under Horizon, fullscreen at 1080p
+docked and 720p handheld, the Nintendo button layout, finer aim for the Joy-Con
+stick, and a clean return to the HOME menu. It is unofficial and ships no game
+content: you need your own US ROM.
 
-- **Download:** [latest release](../../releases/latest) (the archive's
-  `README.txt` has the install steps).
-- **Changes:** [CHANGELOG.md](CHANGELOG.md).
-- **Build:** `docker compose build`, then `docker compose run --rm switch`
-  (the NRO lands in `build-switch/`); the porting notes are in
+- **Download:** [latest release](../../releases/latest); the archive's
+  `README.txt` has the install steps.
+- **Changes:** [CHANGELOG.md](CHANGELOG.md) for this fork; the game's own
+  changes are in [upstream's releases](https://github.com/jkdansereau/goldeneye-pc-port/releases).
+- **Build:** `docker compose build`, then `docker compose run --rm switch`;
+  the NRO lands in `build-switch/`. Porting notes:
   [docs/switch/PLAN.md](docs/switch/PLAN.md).
+- **Bugs:** a problem on the Switch belongs here; a problem you also see on
+  the PC version belongs [upstream](https://github.com/jkdansereau/goldeneye-pc-port/issues).
 
-Everything below is the upstream README, about the PC port this one is built on.
+### Credits and license
+
+- **A modified version of the GoldenEye 007 PC Port.** Project Dam is a
+  modified version of the [GoldenEye 007 PC Port](https://github.com/jkdansereau/goldeneye-pc-port)
+  by [James Dansereau](https://github.com/jkdansereau) and contributors, MIT
+  like the original ([LICENSE](LICENSE), third-party components in
+  [NOTICE](NOTICE)). This fork's changes start on 2026-11-11, from upstream
+  v0.6.0, and are in the [commit history](../../commits/main), which keeps the
+  original's history too.
+- GoldenEye 007 is a trademark of its owners; this project is not affiliated
+  with Nintendo, Rare, Microsoft or MGM.
+
+The rest of this page is the upstream README, about the PC port this fork is
+built on.
 
 ---
 
