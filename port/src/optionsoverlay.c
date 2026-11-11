@@ -352,6 +352,8 @@ static struct Row rows[] = {
     { .key="Input.PadDeadzoneR", .label="Right stick deadzone", .kind=ROW_SLIDER, .step=300, .unit="%", .dispDiv=300 },
     { .key="Input.PadLookSensX", .label="Horizontal look sensitivity", .kind=ROW_SLIDER, .step=5 },
     { .key="Input.PadLookSensY", .label="Vertical look sensitivity", .kind=ROW_SLIDER, .step=5 },
+    { .key="Input.PadAimSens", .label="Aim-mode sensitivity", .kind=ROW_SLIDER, .step=5 },   /* project-dam */
+    { .key="Input.PadAimCurve", .label="Aim-mode precision curve", .kind=ROW_SLIDER, .step=10 },
     { .key="Input.PadLookSmooth", .label="Look smoothing", .kind=ROW_SLIDER, .step=1 },   /* D506: raw 0-10, shown as whole % */
     { .key="Input.PadSouthpaw", .label="Southpaw", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
     { .key="Input.PadTriggerPct", .label="Trigger threshold", .kind=ROW_SLIDER, .step=1, .unit="%" },   /* D506: raw is already a percent */
@@ -2108,6 +2110,13 @@ static const struct { const char *key; double def; } kResetDefaults[] = {
     { "Input.PadDeadzoneR",     7500 },/* = STICK_DEADZONE (7500 = 25%, D546), Wave A */
     { "Input.PadLookSensX",     100 },  /* = 100 (native), Wave A */
     { "Input.PadLookSensY",     100 },  /* = 100 (native), Wave A */
+#if defined(__SWITCH__)
+    { "Input.PadAimSens",        70 },  /* project-dam: = padAimSens */
+    { "Input.PadAimCurve",      200 },
+#else
+    { "Input.PadAimSens",       100 },
+    { "Input.PadAimCurve",      100 },
+#endif
     { "Input.PadLookSmooth",      0 },  /* = 0 (off), Wave A */
     { "Input.PadSouthpaw",        0 },  /* = 0 (off), Wave A */
     { "Input.PadTriggerPct",     25 },  /* = 25 (was 23; rounded, D508) */
@@ -3036,7 +3045,8 @@ static void valueText(int i, char *out, int n)
     }
     /* D506: multipliers (raw 100 = 1.0x): vertical mouse and controller look sensitivity. */
     if (!strcmp(r->key, "Input.MouseYScale") || !strcmp(r->key, "Input.PadLookSensX") ||
-        !strcmp(r->key, "Input.PadLookSensY")) {
+        !strcmp(r->key, "Input.PadLookSensY") || !strcmp(r->key, "Input.PadAimSens") ||
+        !strcmp(r->key, "Input.PadAimCurve")) {
         snprintf(out, n, "%.1fx", v / 100.0);
         return;
     }
