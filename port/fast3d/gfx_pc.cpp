@@ -1286,8 +1286,60 @@ static void import_texture(int i, int tile, bool importReplacement) {
                 ph *= 16777619u;
             }
         }
+#ifdef __SWITCH__
+        /* project-dam: a CI8 texture only reads palette entries up to its
+         * highest index. Hashing the whole 256-entry table (D217) changed the
+         * key whenever ANOTHER material loaded its TLUT elsewhere in the
+         * table, so the same image + same colours re-imported over and over
+         * (Dam: the same addresses 20-150 times per 300 frames). Hash only the
+         * entries this texture can use. The max index is a property of the
+         * image bytes, cached per (address, size); dyn-pool images (rebuilt in
+         * place) are rescanned. */
+        if (siz == G_IM_SIZ_8b && loaded_texture.size_bytes) {
+            /* Room textures are streamed into reused memory, so the cache key
+             * also carries a fingerprint of the image bytes (first/last 32). */
+            static std::map<std::pair<const uint8_t*, uint64_t>, uint8_t> s_ci8MaxIdx;
+            const uint8_t* v1 = orig_addr;
+            if ((uintptr_t)v1 >= PORT_DRAM_K0_BASE && (uintptr_t)v1 < PORT_DRAM_K0_BASE + PORT_DRAM_SIZE)
+                v1 -= (PORT_DRAM_K0_BASE - PORT_DRAM_V1_BASE);
+            const bool dynPool = g_VtxBuffers[0] && v1 >= g_VtxBuffers[0] && v1 < g_VtxBuffers[2];
+            uint32_t fp = 2166136261u;
+            {
+                const uint32_t n = loaded_texture.size_bytes;
+                const uint32_t head = n < 32 ? n : 32;
+                for (uint32_t b = 0; b < head; b++) fp = (fp ^ orig_addr[b]) * 16777619u;
+                for (uint32_t b = n > 32 ? n - 32 : 0; b < n; b++) fp = (fp ^ orig_addr[b]) * 16777619u;
+            }
+            const auto mk = std::make_pair(orig_addr, ((uint64_t)loaded_texture.size_bytes << 32) | fp);
+            auto it = dynPool ? s_ci8MaxIdx.end() : s_ci8MaxIdx.find(mk);
+            uint8_t maxIdx;
+            if (it != s_ci8MaxIdx.end()) {
+                maxIdx = it->second;
+            } else {
+                maxIdx = 0;
+                for (uint32_t b = 0; b < loaded_texture.size_bytes && maxIdx != 255; b++) {
+                    if (orig_addr[b] > maxIdx) maxIdx = orig_addr[b];
+                }
+                if (!dynPool) s_ci8MaxIdx[mk] = maxIdx;
+            }
+            ph = 2166136261u;
+            const uint8_t* pb = (const uint8_t*)rdp.palette;
+            for (uint32_t k = 0; k < ((uint32_t)maxIdx + 1u) * sizeof(uint16_t); ++k) {
+                ph ^= pb[k];
+                ph *= 16777619u;
+            }
+        }
+        /* project-dam: key CI textures on the palette CONTENT only. The TLUT
+         * load addresses change from frame to frame (palettes re-copied into
+         * per-frame memory), so with them in the key the same image + same
+         * palette missed every frame: hundreds of re-imports per 300 frames
+         * in Dam, at ~5 ms each on the console. ph already distinguishes
+         * different palettes (D217/D476). */
+        key = { orig_addr, {}, fmt, siz, palette_index, loaded_texture.size_bytes, ph };
+#else
         key = { orig_addr, { rdp.palette_addrs[0], rdp.palette_addrs[1] }, fmt, siz, palette_index,
                 loaded_texture.size_bytes, ph }; // D217/D476: key on (used) palette content
+#endif
     } else {
         key = { orig_addr, {}, fmt, siz, palette_index, loaded_texture.size_bytes, 0u };
     }

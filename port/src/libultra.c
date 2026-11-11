@@ -404,14 +404,18 @@ void imThreadExitRelease(void);   /* D152: defined in the interrupt-mask section
 
 /* pthread entry wrapper. */
 #if defined(PLATFORM_SWITCH)
-#include "nxmem.h"   /* project-dam: nxLogThreadCore diagnostics */
+#include "nxmem.h"   /* project-dam: nxSetThreadCore */
 #endif
 
 static void *portThreadWrapper(void *arg)
 {
     PortThread *pt = (PortThread *)arg;
 #if defined(PLATFORM_SWITCH)
-    nxLogThreadCore("game thread", (int)pt->id);
+    /* project-dam: spread the game threads over the application cores. Core 0
+     * keeps the game logic (MAIN_THREAD_ID 3) next to the process main thread,
+     * core 1 is the render worker's, core 2 takes audio (AUDI_THREAD_ID 4) and
+     * the light, latency-sensitive scheduler (SCHED_THREAD_ID 2). */
+    nxSetThreadCore((pt->id == 4 || pt->id == 2) ? 2 : 0);
 #endif
 
 #if defined(PLATFORM_WINDOWS)
@@ -1961,7 +1965,7 @@ static void *portRenderWorker(void *arg)
 {
     (void)arg;
 #if defined(PLATFORM_SWITCH)
-    nxLogThreadCore("render worker", 0);
+    nxSetThreadCore(1);   /* project-dam: the render worker owns core 1 */
 #endif
     for (;;) {
         int presentDue = 0;

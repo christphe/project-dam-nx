@@ -32,8 +32,11 @@ void *nxMapAlias(uintptr_t view, uintptr_t primary, size_t size);
 /* Undo nxMapFixed()/nxMapAlias() for the block that starts at `addr`. */
 void nxUnmapFixed(uintptr_t addr);
 
-/* Diagnostics: log which CPU core / priority the calling thread runs on. */
-void nxLogThreadCore(const char *name, int id);
+/* Give the calling thread an ideal core (0..2) while allowing the kernel to
+ * migrate it across the three application cores. libnx starts every pthread
+ * on the process's default core, so without this the game logic, the render
+ * worker and audio all share one core. */
+void nxSetThreadCore(int idealCore);
 
 /* Set when the DRAM KSEG0 view (0x80000000) could not be mapped as a real
  * mirror: portN64ToHost() then folds KSEG0 addresses onto V1 in software. */

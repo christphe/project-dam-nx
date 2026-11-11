@@ -792,7 +792,42 @@ static void gfx_opengl_upload_texture(const uint8_t* rgba32_buf, uint32_t width,
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba32_buf);
 	/* Trilinear option (playtest 2026-10-03): force mips for TRILINEAR too. */
 	if (gen_mipmaps || current_filter_mode == FILTER_THREE_POINT || current_filter_mode == FILTER_TRILINEAR) {
+#ifdef __SWITCH__
+		/* project-dam: build the mip chain on the CPU (2x2 box filter, like
+		 * glGenerateMipmap) and upload each level. On Switch's mesa,
+		 * glGenerateMipmap runs GPU blits that the next draws then wait on:
+		 * measured in Ryujinx, it was most of the stalls when new textures
+		 * appear (DrawArrays waits 1819 ms -> 90 ms over the same intro loop).
+		 * N64 textures are tiny, so the CPU chain costs microseconds. */
+		static std::vector<uint8_t> s_mip[2];
+		const uint8_t* src = rgba32_buf;
+		uint32_t w = width, h = height;
+		for (GLint level = 1; w > 1 || h > 1; level++) {
+			const uint32_t nw = w > 1 ? w / 2 : 1, nh = h > 1 ? h / 2 : 1;
+			std::vector<uint8_t>& dst = s_mip[level & 1];
+			dst.resize((size_t)nw * nh * 4);
+			for (uint32_t y = 0; y < nh; y++) {
+				const uint32_t y0 = y * 2 < h ? y * 2 : h - 1, y1 = y * 2 + 1 < h ? y * 2 + 1 : y0;
+				for (uint32_t x = 0; x < nw; x++) {
+					const uint32_t x0 = x * 2 < w ? x * 2 : w - 1, x1 = x * 2 + 1 < w ? x * 2 + 1 : x0;
+					const uint8_t* a = src + ((size_t)y0 * w + x0) * 4;
+					const uint8_t* b = src + ((size_t)y0 * w + x1) * 4;
+					const uint8_t* c = src + ((size_t)y1 * w + x0) * 4;
+					const uint8_t* d = src + ((size_t)y1 * w + x1) * 4;
+					uint8_t* o = &dst[((size_t)y * nw + x) * 4];
+					for (int k = 0; k < 4; k++) {
+						o[k] = (uint8_t)((a[k] + b[k] + c[k] + d[k] + 2) >> 2);
+					}
+				}
+			}
+			glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA8, nw, nh, 0, GL_RGBA, GL_UNSIGNED_BYTE, dst.data());
+			src = dst.data();
+			w = nw;
+			h = nh;
+		}
+#else
 		glGenerateMipmap(GL_TEXTURE_2D);
+#endif
 	}
 }
 
