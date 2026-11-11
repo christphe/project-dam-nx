@@ -125,8 +125,26 @@ static void gfx_opengl_unload_shader(struct ShaderProgram* old_prg) {
     }
 }
 
+#ifdef __SWITCH__
+/* project-dam: streaming vertex ring. glBufferData per batch re-creates the
+ * buffer's storage each time, hundreds of times a frame; mesa/nouveau pays an
+ * allocation and often a GPU sync for it on the console's slow CPU. Instead,
+ * one large buffer is filled front to back with unsynchronized maps, and only
+ * a wrap orphans it (the driver hands out fresh storage while the GPU still
+ * reads the old one). Each batch starts on a multiple of the shader's vertex
+ * stride so it can be drawn with glDrawArrays' `first`. GE_VBORING=0 restores
+ * the per-batch glBufferData, for A/B timing on the console. */
+#define VBO_RING_SIZE (8u << 20)
+static int s_vbo_ring = 1;
+static size_t s_vbo_ring_off = 0;
+static size_t s_vbo_stride = 0;   /* bytes per vertex of the bound shader */
+#endif
+
 static void gfx_opengl_load_shader(struct ShaderProgram* new_prg) {
     // if (!new_prg) return;
+#ifdef __SWITCH__
+    s_vbo_stride = new_prg->num_floats * sizeof(float);
+#endif
     glUseProgram(new_prg->opengl_program_id);
     gfx_opengl_vertex_array_set_attribs(new_prg);
     gfx_opengl_set_uniforms(new_prg);
@@ -965,6 +983,28 @@ static void gfx_opengl_set_use_alpha(bool use_alpha, bool modulate) {
 
 static void gfx_opengl_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
     // printf("flushing %d tris\n", buf_vbo_num_tris);
+#ifdef __SWITCH__
+    if (s_vbo_ring && s_vbo_stride > 0) {
+        const size_t bytes = sizeof(float) * buf_vbo_len;
+        size_t off = (s_vbo_ring_off + s_vbo_stride - 1) / s_vbo_stride * s_vbo_stride;
+        GLbitfield access = GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT | GL_MAP_INVALIDATE_RANGE_BIT;
+        if (off + bytes > VBO_RING_SIZE) {
+            off = 0;
+            access = GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT;   /* orphan: fresh storage */
+        }
+        void* dst = glMapBufferRange(GL_ARRAY_BUFFER, off, bytes, access);
+        if (dst != NULL) {
+            memcpy(dst, buf_vbo, bytes);
+            glUnmapBuffer(GL_ARRAY_BUFFER);
+            glDrawArrays(GL_TRIANGLES, (GLint)(off / s_vbo_stride), 3 * buf_vbo_num_tris);
+            s_vbo_ring_off = off + bytes;
+            return;
+        }
+        /* Mapping failed: per-batch uploads from now on. */
+        sysLogPrintf(LOG_WARNING, "GL: vertex ring map failed (0x%x); per-batch uploads", glGetError());
+        s_vbo_ring = 0;
+    }
+#endif
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * buf_vbo_len, buf_vbo, GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, 3 * buf_vbo_num_tris);
 }
@@ -1202,6 +1242,17 @@ static void gfx_opengl_init(void) {
 
     glGenBuffers(1, &opengl_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, opengl_vbo);
+#ifdef __SWITCH__
+    {
+        const char* e = getenv("GE_VBORING");
+        s_vbo_ring = !(e && e[0] == '0') && glMapBufferRange != NULL;
+        if (s_vbo_ring) {
+            glBufferData(GL_ARRAY_BUFFER, VBO_RING_SIZE, NULL, GL_STREAM_DRAW);
+        }
+        sysLogPrintf(LOG_NOTE, "GL: vertex upload %s",
+                     s_vbo_ring ? "ring (8 MiB, unsynchronized maps)" : "per batch (glBufferData)");
+    }
+#endif
 
     if (gl_core_profile || gl_es) {
         // warn user that funny things can happen
