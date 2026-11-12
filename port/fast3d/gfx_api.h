@@ -32,6 +32,14 @@ extern struct GfxDimensions
 extern struct XYWidthHeight
     gfx_current_game_window_viewport; // The area of the window the game is drawn to, (0, 0) is top-left corner
 extern uint32_t gfx_msaa_level;
+#ifdef __SWITCH__
+/* project-dam: FXAA post pass (Video.FXAA), live from the menu. */
+extern bool gfx_fxaa_on;
+/* project-dam: the user's MSAA level; gfx_start_frame copies it into
+ * gfx_msaa_level each frame so menu edits apply live. */
+extern uint32_t gfx_msaa_docked;     /* level used while docked */
+extern uint32_t gfx_msaa_handheld;   /* level used while handheld */
+#endif
 extern struct XYWidthHeight gfx_current_native_viewport; // The internal/native video mode of the game
 extern float gfx_current_native_aspect; // The aspect ratio of the above mode
 extern bool gfx_framebuffers_enabled;

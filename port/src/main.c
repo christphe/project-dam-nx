@@ -156,6 +156,33 @@ int main(int argc, char **argv)
         }
     }
 #endif
+#if defined(PLATFORM_SWITCH) && defined(NX_ARGS)
+    /* Debug builds only (cmake -DNX_ARGS=ON): the console has no command line,
+     * so data/ge007.args supplies one. Tokens are appended to argv
+     * (e.g. "-level_33" boots straight into Dam); NAME=value sets an
+     * environment variable. */
+    {
+        static char argbuf[512];
+        static char *nargv[32];
+        FILE *af = fopen("data/ge007.args", "r");
+        if (af) {
+            size_t n = fread(argbuf, 1, sizeof(argbuf) - 1, af);
+            fclose(af);
+            argbuf[n] = 0;
+            int nargc = 0;
+            for (int i = 0; i < argc && nargc < 31; i++) nargv[nargc++] = argv[i];
+            if (nargc == 0) nargv[nargc++] = (char *)"project-dam";
+            for (char *tok = strtok(argbuf, " \t\r\n"); tok && nargc < 31; tok = strtok(NULL, " \t\r\n")) {
+                char *eq = strchr(tok, '=');
+                if (eq && tok[0] != '-') { *eq = 0; setenv(tok, eq + 1, 1); continue; }
+                nargv[nargc++] = tok;
+            }
+            nargv[nargc] = NULL;
+            argc = nargc;
+            argv = nargv;
+        }
+    }
+#endif
     sysSetArgs(argc, argv);
 
     if (sysArgCheck("--version")) { portPrintVersion(); return 0; }

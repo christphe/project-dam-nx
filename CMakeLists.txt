@@ -97,6 +97,8 @@ include(SwitchPort)
 # backtrace. Off by default (zero cost); enable with -DPORT_ADDR_STRICT=ON.
 # Catches the MACOS-SFX-BOUND through MACOS-TEXALIGN truncated/never-rebased-pointer family early.
 option(PORT_ADDR_STRICT "Validate N64->host address conversions at runtime" OFF)
+# Switch debug builds: read extra command-line arguments from data/ge007.args (-DNX_ARGS=ON).
+option(NX_ARGS "Switch: read data/ge007.args as command-line arguments" OFF)
 
 include(TargetArch)
 include(FindPkgConfig)
@@ -312,6 +314,9 @@ add_definitions(
   -DPORT_ADDR_BASE=${PORT_ADDR_BASE}
   ${REGION_DEFS}
 )
+if(NX_ARGS)
+  add_definitions(-DNX_ARGS=1)
+endif()
 if(PORT_ADDR_STRICT)
   add_definitions(-DPORT_ADDR_STRICT=1)
   message(STATUS "PORT_ADDR_STRICT enabled: N64->host conversions are validated at runtime")

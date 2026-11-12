@@ -3,12 +3,14 @@
 ## [Unreleased] - minor
 
 ### Added
+- Anti-aliasing on the Switch: MSAA 2x handheld and 4x docked, plus FXAA, a final pass that smooths polygon and rail edges without blurring flat textures; the Switch display mode turns them on
 - Blood on hit (Game page, on by default): a bullet in a guard's body makes a dark-red puff instead of the wall's pale-yellow one, so hits read as hits; off restores the original game
 - Look precision and Turn acceleration on the Controller page: a steeper stick curve (3.0 by default, the original game uses 2.0) for fine aim, and a turn that speeds up when the stick is held at the edge (Low by default) for wide turns
 - Centered + sway aim style, the default on the Switch: the crosshair stays at the centre and the weapon trails the camera when it turns, then settles back at the weapon's own pace
 - Aim sensitivity on the Controller page: how fast the right stick turns while aiming (0.5x by default)
 
 ### Changed
+- Display mode on the Switch has three choices: Switch (the game's own settings), N64 (the original look) and Custom; Switch and N64 only show Show FPS, and Custom shows every other graphics option (aspect, widescreen, VSync, frame cap, anti-aliasing, FXAA, texture filter, anisotropy, draw, fog and LOD distance) to tune the picture
 - The right stick deadzone is 10% by default on the Switch instead of 25%, so small aim movements register; settings that still had the old default move to it once
 - The options no longer show the Mouse and Key Bindings pages, which need a mouse or a keyboard; Aim sensitivity replaces the aim-mode sensitivity and precision curve options
 - Aim style moves to the Controller page; the Centered styles turn the camera with the right stick, and the view stays where it is when the stick is released (Original keeps the N64 crosshair)

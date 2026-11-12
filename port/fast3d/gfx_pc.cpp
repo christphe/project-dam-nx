@@ -38,6 +38,9 @@
 #include "gfx_window_manager_api.h"
 #include "gfx_rendering_api.h"
 #include "gfx_screen_config.h"
+#ifdef __SWITCH__
+#include "gfx_opengl.h"   /* gfx_opengl_fxaa_pass */
+#endif
 
 uintptr_t gfxFramebuffer;
 
@@ -327,6 +330,17 @@ extern "C" void gfx_get_output_rect(int32_t *outX, int32_t *outY, int32_t *outW,
 }
 
 uint32_t gfx_msaa_level = 1;
+#ifdef __SWITCH__
+bool gfx_fxaa_on = false;
+#define GFX_FXAA (gfx_fxaa_on)
+#else
+#define GFX_FXAA false
+#endif
+#ifdef __SWITCH__
+uint32_t gfx_msaa_docked = 1;
+uint32_t gfx_msaa_handheld = 1;
+extern "C" int nxIsHandheld(void);   /* project-dam: port/src/switch/nxmem.c */
+#endif
 
 static bool dropped_frame;
 
@@ -4672,7 +4686,7 @@ static void gfx_adjust_viewport_or_scissor(XYWidthHeight* area, bool preserve_as
     }
 
     if (!game_renders_to_framebuffer ||
-        (gfx_msaa_level > 1 && gfx_current_dimensions.width == gfx_current_game_window_viewport.width &&
+        ((gfx_msaa_level > 1 || GFX_FXAA) && gfx_current_dimensions.width == gfx_current_game_window_viewport.width &&
             gfx_current_dimensions.height == gfx_current_game_window_viewport.height)) {
         area->x += gfx_current_game_window_viewport.x;
         area->y += gfx_current_window_dimensions.height -
@@ -6203,6 +6217,12 @@ extern "C" void gfx_start_frame(void) {
 
     gfx_current_window_dimensions.aspect_ratio = (float)gfx_current_window_dimensions.width / gfx_current_window_dimensions.height;
 
+#ifdef __SWITCH__
+    /* project-dam: the MSAA level comes from the menu, live (handheld too);
+     * the framebuffers below are rebuilt when it changes. */
+    gfx_msaa_level = gfx_framebuffers_enabled ? (nxIsHandheld() ? gfx_msaa_handheld : gfx_msaa_docked) : 1;
+#endif
+
     gfx_current_dimensions = gfx_current_window_dimensions;
 
     gfx_current_game_window_viewport.x = 0;
@@ -6262,7 +6282,7 @@ extern "C" void gfx_start_frame(void) {
 
     bool different_size = gfx_current_dimensions.width != gfx_current_game_window_viewport.width ||
                           gfx_current_dimensions.height != gfx_current_game_window_viewport.height;
-    if (gfx_framebuffers_enabled && (different_size || gfx_msaa_level > 1)) {
+    if (gfx_framebuffers_enabled && (different_size || gfx_msaa_level > 1 || (GFX_FXAA && gfx_framebuffers_enabled))) {
         game_renders_to_framebuffer = true;
         if (different_size) {
             gfx_rapi->update_framebuffer_parameters(game_framebuffer, gfx_current_dimensions.width,
@@ -6279,6 +6299,14 @@ extern "C" void gfx_start_frame(void) {
             gfx_rapi->update_framebuffer_parameters(game_framebuffer_msaa_resolved, gfx_current_dimensions.width,
                                                     gfx_current_dimensions.height, 1, false, false, false, false);
         }
+#ifdef __SWITCH__
+        else if (gfx_msaa_level > 1 && gfx_fxaa_on) {
+            /* project-dam: window-sized single-sample target the MSAA image is
+             * resolved into before the FXAA pass (gfx_frame_body). */
+            gfx_rapi->update_framebuffer_parameters(game_framebuffer_msaa_resolved, gfx_current_window_dimensions.width,
+                                                    gfx_current_window_dimensions.height, 1, false, false, false, false);
+        }
+#endif
     } else {
         game_renders_to_framebuffer = false;
     }
@@ -6424,9 +6452,25 @@ static void gfx_frame_body(Gfx* commands, bool emit_overlay, Gfx** overlay_io, u
                 gfx_rapi->resolve_msaa_color_buffer(game_framebuffer_msaa_resolved, game_framebuffer);
                 gfxFramebuffer = (uintptr_t)gfx_rapi->get_framebuffer_texture_id(game_framebuffer_msaa_resolved);
             } else {
+#ifdef __SWITCH__
+                if (gfx_fxaa_on) {
+                    /* project-dam: FXAA reads a single-sample texture, so resolve
+                     * into one first, then draw it to the window anti-aliased. */
+                    gfx_rapi->resolve_msaa_color_buffer(game_framebuffer_msaa_resolved, game_framebuffer);
+                    gfx_opengl_fxaa_pass(game_framebuffer_msaa_resolved);
+                } else {
+                    gfx_rapi->resolve_msaa_color_buffer(0, game_framebuffer);
+                }
+#else
                 gfx_rapi->resolve_msaa_color_buffer(0, game_framebuffer);
+#endif
             }
         } else {
+#ifdef __SWITCH__
+            if (gfx_fxaa_on) {
+                gfx_opengl_fxaa_pass(game_framebuffer);   /* project-dam: FXAA without MSAA */
+            } else
+#endif
             gfxFramebuffer = (uintptr_t)gfx_rapi->get_framebuffer_texture_id(game_framebuffer);
         }
     }
@@ -7058,7 +7102,7 @@ extern "C" void gfx_copy_framebuffer(int fb_dst, int fb_src, int left, int top, 
             // flip Y
             top = gfx_current_window_dimensions.height - top - 1;
         }
-        if (use_back && gfx_msaa_level > 1) {
+        if (use_back && (gfx_msaa_level > 1 || GFX_FXAA)) {
             // read from the framebuffer we've been rendering to
             fb_src = game_framebuffer;
         }

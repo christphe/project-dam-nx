@@ -124,7 +124,11 @@ static const char *const kAimMode[]   = { "Original", "Centered", NULL };   /* D
 static int displayModeNow(void);   /* defined with the preset helpers below */
 static const char *const kDisplayModeName[3];
 static const char *const kAimRange[]  = { "Extended", "Original", NULL };             /* D338 */
+#if defined(__SWITCH__)
+static const int         kMsaaSeq[]   = { 1, 2, 4, 8 };   /* project-dam: 16x is capped to 8 by the driver */
+#else
 static const int         kMsaaSeq[]   = { 1, 2, 4, 8, 16 };   /* D443: 16x added */
+#endif
 #define MSAA_N ((int)(sizeof(kMsaaSeq) / sizeof(kMsaaSeq[0])))
 /* v0.4.0 modern options wave: value names for the new rows (they land
  * in the functional sections -- Turok standard, D356 -- not a bucket). */
@@ -261,7 +265,13 @@ static struct Row rows[] = {
      * vertical-FOV compensation). */
     { .key="Video.NativeWidescreen", .label="Native widescreen", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
     { .key="Video.WidescreenAuto", .label="Widescreen auto FOV", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
+#if defined(__SWITCH__)
+    { .key="Video.MSAAHandheld", .label="Anti-aliasing (handheld)", .kind=ROW_MSAA },   /* project-dam */
+    { .key="Video.MSAA", .label="Anti-aliasing (docked)", .kind=ROW_MSAA },
+    { .key="Video.FXAA", .label="FXAA", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
+#else
     { .key="Video.MSAA", .label="Anti-aliasing", .kind=ROW_MSAA, .restart=1 },
+#endif
     SEP(V2),
     { .key="Video.VSync", .label="VSync", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
     { .key="Video.FpsCap", .label="Frame rate cap", .kind=ROW_FPSCAP },
@@ -1113,13 +1123,28 @@ static int rowPlatformOk(const struct Row *r)
 #if defined(__SWITCH__)
     static const char *const kDesktopOnly[] = {
         "Video.Fullscreen", "Video.FullscreenMode", "__CenterWindow", "__Resolution",
-        "Video.MSAA",   /* forced off on Switch (port/src/video.c) */
         "__RestartGame",   /* no self-relaunch on Switch (sysRelaunchSelf) */
         "Game.CheckUpdates", "__UpdateOpen",   /* update check is stubbed out */
         NULL,
     };
+    /* Display mode Switch / N64 only shows Show FPS; Custom shows the rest. */
+    static const char *const kCustomOnly[] = {
+        "Video.AspectMode", "Video.NativeWidescreen", "Video.WidescreenAuto",
+        "Video.MSAAHandheld", "Video.MSAA", "Video.FXAA",
+        "__SepV2", "Video.VSync", "Video.FpsCap",
+        "__SepV3", "Video.TextureFilter", "Video.Anisotropy",
+        "__SepV4", "Video.SafeAreaCrop",
+        "Video.DrawDistance", "Video.FogDistance", "Video.LodDistance",
+        "__SepV5", "Game.ScreenShakeIntensity", "__ResetVideo",
+        NULL,
+    };
     for (int k = 0; kDesktopOnly[k]; k++) {
         if (!strcmp(r->key, kDesktopOnly[k])) return 0;
+    }
+    if (videoGetDisplayMode() != 2) {
+        for (int k = 0; kCustomOnly[k]; k++) {
+            if (!strcmp(r->key, kCustomOnly[k])) return 0;
+        }
     }
 #else
     (void)r;
@@ -1824,7 +1849,12 @@ static void rowAdjust(struct Row *r, int dir)
     case ROW_ACTION:
         if (!strcmp(r->key, "__DisplayMode")) {   /* left/right steps Modern <-> Original N64; Custom -> Modern (right) / N64 (left) */
             int cur = displayModeNow();
+#if defined(__SWITCH__)
+            videoSetDisplayMode((cur + (dir > 0 ? 1 : 2)) % 3);   /* Switch -> N64 -> Custom, both ways */
+            overlayUpdateVisible();
+#else
             videoApplyPreset((cur == 0 || (cur == 2 && dir < 0)) ? VIDEO_PRESET_N64 : VIDEO_PRESET_PORT);
+#endif
             break;
         }
         if (optionsRowChildHeader((int)(r - rows)) >= 0) break; /* link, not a Quit or value */
@@ -1932,8 +1962,9 @@ static void ddBuild(const struct Row *r)
         }
         s_ddN = n;
     } else if (r->kind == ROW_ACTION) {   /* Display mode: Custom is shown (current) but picking it is a no-op */
-        for (int i = 0; i < 3; i++) { s_ddVals[i] = i; snprintf(s_ddLab[i], sizeof(s_ddLab[i]), "%s", kDisplayModeName[i]); }
-        s_ddN = 3;
+        const int nModes = 3;
+        for (int i = 0; i < nModes; i++) { s_ddVals[i] = i; snprintf(s_ddLab[i], sizeof(s_ddLab[i]), "%s", kDisplayModeName[i]); }
+        s_ddN = nModes;
         s_ddCur = displayModeNow();
     } else if (r->kind == ROW_MSAA) {
         for (int i = 0; i < MSAA_N; i++) {
@@ -2016,8 +2047,13 @@ static void ddConfirm(int k)
         audioDeviceRequest(val == 0 ? "" : audioDeviceName(val - 1));
         break;
     case ROW_ACTION:   /* Display mode */
+#if defined(__SWITCH__)
+        videoSetDisplayMode(val);
+        overlayUpdateVisible();
+#else
         if (val == 0) videoApplyPreset(VIDEO_PRESET_PORT);
         else if (val == 1) videoApplyPreset(VIDEO_PRESET_N64);
+#endif
         break;
     default:
         rowSet(r, (double)val);
@@ -2106,11 +2142,20 @@ static int isPresetRow(const struct Row *r)
  * targets "the other one": Modern -> Original N64, anything else -> Modern. */
 static int displayModeNow(void)
 {
+#if defined(__SWITCH__)
+    return videoGetDisplayMode();
+#else
     if (videoPresetIsActive(VIDEO_PRESET_PORT)) return 0;
     if (videoPresetIsActive(VIDEO_PRESET_N64))  return 1;
     return 2;
+#endif
 }
+#if defined(__SWITCH__)
+/* project-dam: Switch, N64, Custom (Custom shows every graphics row). */
+static const char *const kDisplayModeName[3] = { "Switch", "N64", "Custom" };
+#else
 static const char *const kDisplayModeName[3] = { "Modern", "Original N64", "Custom" };
+#endif
 
 
 static int isArmRow(const struct Row *r)
@@ -2169,7 +2214,15 @@ static const struct { const char *key; double def; } kResetDefaults[] = {
     { "Input.ControlScheme",     0 },   /* = 0 (Modern), D513 */
     { "Input.PadPreset",         0 },   /* = 0 (Jinx 1.1), D469 */
     /* GRAPHICS (port/src/video.c initializers) */
+#if defined(__SWITCH__)
+    { "Video.MSAA",                 4 },   /* project-dam: docked */
+#else
     { "Video.MSAA",                 2 },   /* = 2 */
+#endif
+#if defined(__SWITCH__)
+    { "Video.MSAAHandheld",         2 },   /* project-dam */
+    { "Video.FXAA",                 1 },   /* project-dam: on */
+#endif
     { "Video.TextureFilter",        1 },   /* = 1 (bilinear) */
     { "Video.Anisotropy",           4 },   /* = 4 */
     { "Video.FovScale",            100 },  /* = 100 */
@@ -2335,6 +2388,10 @@ void optionsResetClear(void)
 static void valueText(int i, char *out, int n);
 static void presetProbe(void)
 {
+#if defined(__SWITCH__)
+    sysLogPrintf(LOG_INFO, "GE_PRESETPROBE: skipped on Switch (two presets, no Custom)");
+    return;
+#endif
     int bad = 0;
     int i = rowIndexByKey("__DisplayMode");
     char val[32] = "";
@@ -3921,7 +3978,11 @@ int optionsRowIsShown(int i)
  * Rows with self-explanatory labels have no entry (D556: standard PC settings such as
  * resolution, VSync, anti-aliasing, volumes and sensitivities carry no tip). */
 static const struct { const char *key, *help; } kRowHelp[] = {
+    #if defined(__SWITCH__)
+    { "__DisplayMode", "Switch, the original N64 look, or Custom to show every graphics option." },
+#else
     { "__DisplayMode", "Modern, original or custom graphics presets." },
+#endif
     { "Video.FpsCap", "Auto matches your display. Above 60 adds blended in-between frames. The game still runs at 60." },   /* D578 */
     { "Video.AspectMode", "Fill window fits the picture to the whole window." },   /* D560: shown only while Fill window is selected (optionsRowHelp) */
     { "Video.CrosshairHide", "When off, the crosshair stays hidden, even with Sight on screen." },
