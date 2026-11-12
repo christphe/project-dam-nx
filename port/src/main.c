@@ -223,6 +223,9 @@ int main(int argc, char **argv)
      *     (fileGetIsCheatUnlocked, fileIsStageUnlockedAtDifficulty); the
      *     save is never patched. */
     portAllUnlockedApply();
+#if defined(PLATFORM_SWITCH)
+    nxGameApply();   /* project-dam: Game.BloodOnHit */
+#endif
 
     /* 2. Load the ROM and map segments. */
     if (romdataInit() != 0) {
