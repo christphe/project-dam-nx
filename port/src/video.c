@@ -61,7 +61,20 @@ static int initDone = 0;
  */
 static int cfgVSync         = 1;   /* swap interval: 0 = off, 1 = on            */
 static int cfgFpsCap        = -1;  /* frame cap in fps; -1 = Auto (match display refresh, up to 4x the VI rate), 0 = uncapped (vsync); menu: Auto/30/60, and 90/120/144/165/240 = D578 interpolation */
+#ifdef __SWITCH__
+/* project-dam: the Switch display mode (see video.h): MSAA per docked/handheld
+ * state, FXAA on. SwitchPresetRev makes the preset values land once on an ini
+ * written by an older build. */
+static int cfgFXAA          = 1;
+static int cfgMSAA          = 4;   /* docked */
+static int cfgMSAAHandheld  = 2;
+static int cfgDisplayMode   = 0;
+static int cfgSwitchPresetRev = 0;
+#define NX_MSAA_LVL(v) ((v) >= 8 ? 8 : (v) >= 4 ? 4 : (v) >= 2 ? 2 : 1)
+#else
+static int cfgFXAA          = 0;
 static int cfgMSAA          = 2;   /* 1/2/4/8/16 samples; 2x default is lighter on low-end GPUs */
+#endif
 static int cfgTexFilter     = 1;   /* 0 = nearest, 1 = bilinear (default), 2 = N64 3-point + trilinear, 3 = trilinear (Trilinear option, playtest 2026-10-03) */
 static int cfgFixMipTex     = 1;   /* RC2: clip mip-contaminated texture uploads to base height */
 static int cfgDetailBaseTile = 1;  /* D236: TEXTURETYPE_DETAIL -> sample the base image, not the detail tile */
@@ -575,7 +588,13 @@ PD_CONSTRUCTOR static void videoConfigInit(void)
     configRegisterInt("Game.AllUnlocked", &portAllUnlocked, 0, 1);
     configRegisterInt("Video.VSync",         &cfgVSync,      0, 1);
     configRegisterInt("Video.FpsCap",        &cfgFpsCap,    -1, 1000);
+    configRegisterInt("Video.FXAA",          &cfgFXAA,       0, 1);
     configRegisterInt("Video.MSAA",          &cfgMSAA,       1, 16);   /* D443: 16x added */
+#ifdef __SWITCH__
+    configRegisterInt("Video.MSAAHandheld",  &cfgMSAAHandheld, 1, 16);
+    configRegisterInt("Video.DisplayMode",   &cfgDisplayMode, 0, 2);
+    configRegisterInt("Video.SwitchPresetRev", &cfgSwitchPresetRev, 0, 100);
+#endif
     configRegisterInt("Video.TextureFilter", &cfgTexFilter,  0, 3);   /* Trilinear option (playtest 2026-10-03) */
     configRegisterInt("Video.FixMipTextures", &cfgFixMipTex, 0, 1);
     configRegisterInt("Video.DetailBaseTile", &cfgDetailBaseTile, 0, 1);
@@ -773,6 +792,9 @@ static void videoApplyLowEndDefaults(void)
         if (cfgDrawDistance == 200) { cfgDrawDistance = 100; changed++; }   /* D546: the default is 2.0x */
         if (cfgLodDistance == 200)  { cfgLodDistance = 100; changed++; }
         if (cfgMSAA == 2)           { cfgMSAA = 1; gfx_msaa_level = 1; changed++; }
+#ifdef __SWITCH__
+        gfx_msaa_docked = cfgMSAA >= 16 ? 16 : cfgMSAA >= 8 ? 8 : cfgMSAA >= 4 ? 4 : cfgMSAA >= 2 ? 2 : 1;
+#endif
         sysLogPrintf(LOG_INFO, "video: low-end renderer \"%s\" (%s); lowered %d default(s): DrawDistance=%d LodDistance=%d MSAA=%d",
                      r, why, changed, cfgDrawDistance, cfgLodDistance, cfgMSAA);
     } else {
@@ -815,8 +837,15 @@ static const struct { const char *key; double n64, port; } kVideoPresets[] = {
     { "Game.NoHitFlash",             0,   0 },   /* D232 */
     { "Video.CrosshairHide",         0,   0 },   /* D373 */
     { "Video.CrosshairPersistent",   0,   0 },   /* D436: aim mode only, as the N64 */
+#ifdef __SWITCH__
+    { "Video.MSAA",                  1,   4 },   /* project-dam: docked */
+    { "Video.MSAAHandheld",          1,   2 },
+    { "Video.FXAA",                  0,   1 },
+#endif
+#ifndef __SWITCH__   /* project-dam: aim is its own setting on the console, not part of the look */
     { "Input.AimMode",               0,   0 },   /* N64 aim (D337) */
     { "Input.AimRange",              1,   0 },   /* N64 aim limits (D338) */
+#endif
 };
 #define NUM_VIDEO_PRESETS ((int)(sizeof(kVideoPresets) / sizeof(kVideoPresets[0])))
 
@@ -859,12 +888,27 @@ int videoPresetIsActive(int which)
     return 1;
 }
 
+#ifdef __SWITCH__
+int videoGetDisplayMode(void)
+{
+    return cfgDisplayMode < 0 ? 0 : cfgDisplayMode > 2 ? 2 : cfgDisplayMode;
+}
+
+void videoSetDisplayMode(int mode)
+{
+    if (mode < 0 || mode > 2) mode = 0;
+    cfgDisplayMode = mode;
+    if (mode == 0) videoApplyPreset(VIDEO_PRESET_PORT);
+    else if (mode == 1) videoApplyPreset(VIDEO_PRESET_N64);
+}
+#endif
+
 /* D382: record precisely which live video setting changed. Reticle/FOV/
  * frame cap changes must not reset texture state (a shader/cache clear).
  * Option writes may arrive on the menu or scheduler thread; apply on the
  * render thread with the GL context bound, coalesced per frame. */
 enum { VCFG_VSYNC = 1, VCFG_FPS = 2, VCFG_FILTER = 4,
-       VCFG_FOV = 8, VCFG_ANISO = 16, VCFG_CROP = 32 };
+       VCFG_FOV = 8, VCFG_ANISO = 16, VCFG_CROP = 32, VCFG_MSAA = 64, VCFG_FXAA = 128 };
 static SDL_atomic_t liveCfgDirty;
 
 /* D211/D212: push the port-only image knobs where they apply. FovScale is a
@@ -905,6 +949,11 @@ void videoRequestLiveConfigForKey(const char *key)
     else if (!strcmp(key, "Video.FovScale"))        mask = VCFG_FOV;
     else if (!strcmp(key, "Video.Anisotropy"))      mask = VCFG_ANISO;
     else if (!strcmp(key, "Video.SafeAreaCrop"))    mask = VCFG_CROP;
+#ifdef __SWITCH__
+    else if (!strcmp(key, "Video.MSAA"))            mask = VCFG_MSAA;   /* project-dam: live there */
+    else if (!strcmp(key, "Video.FXAA"))            mask = VCFG_FXAA;
+    else if (!strcmp(key, "Video.MSAAHandheld"))    mask = VCFG_MSAA;
+#endif
     /* Video.AspectMode is read every frame in videoStartFrame: no dirty bit. */
     if (mask) {
         int old;
@@ -1163,6 +1212,15 @@ int videoInit(void)
         cfgCrosshairBlue = kTints[cfgCrosshairColor][2];
         cfgCrosshairColor = 8;
     }
+#ifdef __SWITCH__
+    /* project-dam: an ini written by an older build gets the preset values of
+     * its Display mode once (Switch or N64); Custom keeps what is there. */
+    if (cfgSwitchPresetRev < 1) {
+        cfgSwitchPresetRev = 1;
+        if (cfgDisplayMode == 0) videoApplyPreset(VIDEO_PRESET_PORT);
+        else if (cfgDisplayMode == 1) videoApplyPreset(VIDEO_PRESET_N64);
+    }
+#endif
     /* D440 CLI route: -n64preset / -portpreset apply the preset
      * once at startup (after configLoad, before any value reaches fast3d) and
      * persist like an F10 press (the atexit configSave). */
@@ -1184,10 +1242,11 @@ int videoInit(void)
     /* MSAA: snap the requested sample count down to a supported power of two. */
     gfx_msaa_level = cfgMSAA >= 16 ? 16 : cfgMSAA >= 8 ? 8 : cfgMSAA >= 4 ? 4 : cfgMSAA >= 2 ? 2 : 1;
 #ifdef __SWITCH__
-    /* project-dam: the MSAA resolve to the window squeezes the image into the
-     * left half of the screen on Switch (seen with 2x on hardware and in
-     * Ryujinx; MSAA=1 fills the screen), and MSAA is costly on this GPU anyway.
-     * Off until the resolve is fixed; the menu row is hidden. */
+    /* project-dam: the level for each console mode; gfx_start_frame picks the
+     * one that matches the current mode and applies menu edits live. */
+    gfx_msaa_docked = NX_MSAA_LVL(cfgMSAA);
+    gfx_msaa_handheld = NX_MSAA_LVL(cfgMSAAHandheld);
+    gfx_fxaa_on = cfgFXAA != 0;
     gfx_msaa_level = 1;
 #endif
 
@@ -1434,6 +1493,13 @@ void videoStartFrame(void)
         if (dirty & VCFG_FOV) portFovScale = cfgFovScale / 100.0f;
         if (dirty & VCFG_ANISO) gfx_set_anisotropy_level(cfgAniso);
         if (dirty & VCFG_CROP) gfx_set_safe_area_crop(cfgSafeAreaCrop);
+#ifdef __SWITCH__
+        if (dirty & VCFG_FXAA) gfx_fxaa_on = cfgFXAA != 0;   /* project-dam */
+        if (dirty & VCFG_MSAA) {   /* project-dam: picked up by gfx_start_frame */
+            gfx_msaa_docked = NX_MSAA_LVL(cfgMSAA);
+            gfx_msaa_handheld = NX_MSAA_LVL(cfgMSAAHandheld);
+        }
+#endif
         sysLogPrintf(LOG_INFO, "video: live config applied mask=%02x "
                      "(vsync=%d fpscap=%d texfilter=%d fov=%.1f aniso=%d)",
                      dirty, cfgVSync, cfgFpsCap, cfgTexFilter, cfgFovScale, cfgAniso);

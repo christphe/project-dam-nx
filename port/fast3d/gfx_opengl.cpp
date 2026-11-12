@@ -1604,6 +1604,120 @@ void gfx_opengl_clear_region(bool clear_color, bool clear_depth, int x, int y, i
     }
 }
 
+#ifdef __SWITCH__
+/* project-dam: FXAA as a final pass. Draws the single-sample colour texture of
+ * framebuffer src_fb_id to the default framebuffer through an edge-directed
+ * blur (Timothy Lottes' FXAA idea, written from the published algorithm: find
+ * the local luma gradient, blur along the edge, keep the result only if it
+ * stays inside the neighbourhood luma range). One fullscreen triangle. */
+static GLuint s_fxaa_prog, s_fxaa_vao;
+static GLint s_fxaa_loc_tex = -1, s_fxaa_loc_inv = -1;
+
+extern "C" void gfx_opengl_fxaa_pass(int src_fb_id) {
+    if (!gfx_framebuffers_enabled || src_fb_id <= 0 || src_fb_id >= (int)framebuffers.size()) {
+        return;
+    }
+    Framebuffer& src = framebuffers[src_fb_id];
+    if (!s_fxaa_prog) {
+        const char* vs = R"GLSL(#version 330 core
+void main() {
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+)GLSL";
+        const char* fs = R"GLSL(#version 330 core
+uniform sampler2D uTex;
+uniform vec2 uInvRes;
+out vec4 o;
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main() {
+    vec2 uv = gl_FragCoord.xy * uInvRes;
+    vec3 m  = texture(uTex, uv).rgb;
+    vec3 nw = texture(uTex, uv + vec2(-1.0,  1.0) * uInvRes).rgb;
+    vec3 ne = texture(uTex, uv + vec2( 1.0,  1.0) * uInvRes).rgb;
+    vec3 sw = texture(uTex, uv + vec2(-1.0, -1.0) * uInvRes).rgb;
+    vec3 se = texture(uTex, uv + vec2( 1.0, -1.0) * uInvRes).rgb;
+    float lm = luma(m), lnw = luma(nw), lne = luma(ne), lsw = luma(sw), lse = luma(se);
+    float lmin = min(lm, min(min(lnw, lne), min(lsw, lse)));
+    float lmax = max(lm, max(max(lnw, lne), max(lsw, lse)));
+    /* flat or low-contrast area: leave the texture alone (FXAA's edge threshold) */
+    if (lmax - lmin < max(0.0625, lmax * 0.125)) {
+        o = vec4(m, 1.0);
+        return;
+    }
+    /* edge tangent (perpendicular to the luma gradient), y up */
+    vec2 dir = vec2(-((lnw + lne) - (lsw + lse)), -((lnw + lsw) - (lne + lse)));
+    float reduce = max((lnw + lne + lsw + lse) * (0.25 / 8.0), 1.0 / 128.0);
+    float rcp = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
+    dir = clamp(dir * rcp, vec2(-8.0), vec2(8.0)) * uInvRes;
+    vec3 a = 0.5 * (texture(uTex, uv + dir * (1.0 / 3.0 - 0.5)).rgb + texture(uTex, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+    vec3 b = a * 0.5 + 0.25 * (texture(uTex, uv - dir * 0.5).rgb + texture(uTex, uv + dir * 0.5).rgb);
+    float lb = luma(b);
+    o = vec4((lb < lmin || lb > lmax) ? a : b, 1.0);
+}
+)GLSL";
+        GLuint v = glCreateShader(GL_VERTEX_SHADER), f = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(v, 1, &vs, NULL);
+        glCompileShader(v);
+        glShaderSource(f, 1, &fs, NULL);
+        glCompileShader(f);
+        s_fxaa_prog = glCreateProgram();
+        glAttachShader(s_fxaa_prog, v);
+        glAttachShader(s_fxaa_prog, f);
+        glLinkProgram(s_fxaa_prog);
+        GLint ok = 0;
+        char log[512] = "";
+        glGetProgramiv(s_fxaa_prog, GL_LINK_STATUS, &ok);
+        glGetProgramInfoLog(s_fxaa_prog, sizeof log, NULL, log);
+        sysLogPrintf(ok ? LOG_NOTE : LOG_ERROR, "GL: FXAA program link=%d %s", ok, log);
+        glDeleteShader(v);
+        glDeleteShader(f);
+        s_fxaa_loc_tex = glGetUniformLocation(s_fxaa_prog, "uTex");
+        s_fxaa_loc_inv = glGetUniformLocation(s_fxaa_prog, "uInvRes");
+        glGenVertexArrays(1, &s_fxaa_vao);
+    }
+
+    GLint prev_prog = 0, prev_vao = 0, prev_unit = 0, prev_vp[4];
+    const GLboolean prev_depth = glIsEnabled(GL_DEPTH_TEST), prev_blend = glIsEnabled(GL_BLEND),
+                    prev_cull = glIsEnabled(GL_CULL_FACE), prev_scissor = glIsEnabled(GL_SCISSOR_TEST);
+    GLboolean prev_cm[4];
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prev_prog);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prev_vao);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &prev_unit);
+    glGetIntegerv(GL_VIEWPORT, prev_vp);
+    glGetBooleanv(GL_COLOR_WRITEMASK, prev_cm);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, (GLsizei)src.width, (GLsizei)src.height);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glUseProgram(s_fxaa_prog);
+    glUniform1i(s_fxaa_loc_tex, 7);
+    glUniform2f(s_fxaa_loc_inv, 1.0f / (float)src.width, 1.0f / (float)src.height);
+    glActiveTexture(GL_TEXTURE0 + 7);   /* a unit the game's tile sampling never uses */
+    glBindTexture(GL_TEXTURE_2D, src.clrbuf);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindVertexArray(s_fxaa_vao);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glBindVertexArray((GLuint)prev_vao);
+    glUseProgram((GLuint)prev_prog);
+    glActiveTexture((GLenum)prev_unit);
+    glViewport(prev_vp[0], prev_vp[1], prev_vp[2], prev_vp[3]);
+    glColorMask(prev_cm[0], prev_cm[1], prev_cm[2], prev_cm[3]);
+    if (prev_depth) glEnable(GL_DEPTH_TEST);
+    if (prev_blend) glEnable(GL_BLEND);
+    if (prev_cull) glEnable(GL_CULL_FACE);
+    if (prev_scissor) glEnable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER, current_framebuffer == 0 ? 0 : framebuffers[current_framebuffer].fbo);
+}
+#endif
+
 void gfx_opengl_resolve_msaa_color_buffer(int fb_id_target, int fb_id_source) {
     if (!gfx_framebuffers_enabled) {
         return;

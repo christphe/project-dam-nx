@@ -20,6 +20,10 @@ bool gfx_opengl_dump_bound_fbo(uint32_t width, uint32_t height, const char* path
  * buffer just before a swap. Slots are resized on demand. */
 void gfx_opengl_interp_store(int slot, uint32_t width, uint32_t height);
 void gfx_opengl_interp_show(int slot);
+
+/* project-dam: FXAA pass, reads the single-sample colour texture of framebuffer
+ * src_fb_id and draws it, anti-aliased, to the default framebuffer. */
+void gfx_opengl_fxaa_pass(int src_fb_id);
 #ifdef __cplusplus
 }
 #endif

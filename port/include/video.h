@@ -30,6 +30,13 @@ void videoApplySteamDeckPreset(void);
  * holds that preset's value. */
 enum { VIDEO_PRESET_PORT = 0, VIDEO_PRESET_N64 = 1 };
 int  videoApplyPreset(int which);
+#ifdef __SWITCH__
+/* project-dam: Display mode on the console, kept as an explicit setting:
+ * 0 = Switch (2x handheld, 4x docked, FXAA), 1 = N64, 2 = Custom (every
+ * graphics option is shown and editable). Picking 0 or 1 applies that preset. */
+int  videoGetDisplayMode(void);
+void videoSetDisplayMode(int mode);
+#endif
 int  videoPresetIsActive(int which);
 int  videoInit(void);
 void videoDestroy(void);
