@@ -1006,7 +1006,22 @@ static int pdMouseAim = 0;
  * Legacy keys: Input.AimStyle 2 (Centred) migrates to AimMode 1; AimStyle 0/1
  * and Input.PdMouseAim map to the default N64 mode. */
 enum { AIMMODE_N64 = 0, AIMMODE_CENTRED = 1 };
+#if defined(PLATFORM_SWITCH)
+/* project-dam: Input.AimMode 2 = Centred with weapon sway. aimModeGet() reports
+ * it as AIMMODE_CENTRED; padDirectCompute adds the sway (padAimSway). */
+enum { AIMMODE_CENTRED_SWAY = 2 };
+#endif
+#if defined(PLATFORM_SWITCH)
+/* project-dam: Centred + sway by default on the console. In the N64 model the
+ * crosshair springs back when the stick is released, so a shot needs the
+ * stick held still at an angle -- workable on the N64's long stick, not on a
+ * Joy-Con. Centred is the stick-turns-the-camera model of modern shooters;
+ * the sway (padAimSway) gives the weapon back the motion Centred removes. */
+static int aimMode = AIMMODE_CENTRED_SWAY;
+static int nxDefaultsRev = 0;   /* Input.NxDefaultsRev: Switch default migrations done */
+#else
 static int aimMode = AIMMODE_N64;
+#endif
 static int aimLegacyGepd = 0;
 static int aimStyleLegacy = 0;   /* Input.AimStyle (D333, superseded) */
 
@@ -1019,6 +1034,11 @@ static int aimModeGet(void)
     pdMouseAim = 0;
     /* D422: every slot gets the configured mode (the aim state is per slot;
      * padDirectCompute is stateless and acts on slotPlayer()). */
+#if defined(PLATFORM_SWITCH)
+    if (aimMode == AIMMODE_CENTRED_SWAY) {
+        return AIMMODE_CENTRED;
+    }
+#endif
     return aimMode;
 }
 
@@ -1118,22 +1138,19 @@ static Uint64 s_lastLookPollCounter = 0;  /* D194(b): monotonic clock, gameplay-
  * (sens X/Y, smoothing) are feel-only and identity at their defaults. */
 #define PAD_DZ_UNSET (-1)   /* C init for padDeadzoneL/R: "not in ini -> migrate" */
 static int padDeadzoneL    = PAD_DZ_UNSET;    /* left (movement) stick deadzone, raw 0..32767 */
+#if defined(PLATFORM_SWITCH)
+#define NX_STICK_DEADZONE_R 3000   /* project-dam: 10 % right-stick deadzone on the console */
+static int padDeadzoneR    = NX_STICK_DEADZONE_R;
+#else
 static int padDeadzoneR    = PAD_DZ_UNSET;    /* right (look) stick deadzone, raw 0..32767 */
+#endif
 static int padDeadzone     = STICK_DEADZONE;  /* legacy shared deadzone (Input.PadDeadzone) */
 static int padLookSensX    = 100;             /* right-stick look: horizontal sensitivity, % (100 = native) */
 static int padLookSensY    = 100;             /* right-stick look: vertical (pitch) sensitivity, % */
-/* project-dam: right stick while the game is in aim mode (R held / Toggle).
- * The Joy-Con stick has a short throw, so the native linear map leaves no
- * room for fine aim, and the small deflection a trigger press gives the
- * thumb moves the crosshair. A response curve (gamma x100, 100 = linear)
- * keeps small deflections under the game's own deadzone and gives the
- * mid range fine control; the sensitivity (%) scales the result. */
 #if defined(PLATFORM_SWITCH)
-static int padAimSens      = 70;
-static int padAimCurve     = 200;
-#else
-static int padAimSens      = 100;
-static int padAimCurve     = 100;
+static int padAimLookSens  = 50;
+static int padLookCurve    = 300;            /* project-dam: Centred stick curve exponent x100 (game: 200) */
+static int padTurnAccel    = 1;              /* project-dam: 0 off, 1 low (1.5x), 2 high (2x) */             /* project-dam: right stick while aiming (game aim mode), % */
 #endif
 static int padSouthpaw     = 0;               /* 1 = swap fire (G) / grenade (R) trigger actions */
 static int padLookSmooth   = 0;               /* right-stick look low-pass strength, 0-10 (0 = off, 10 = max) */
@@ -1784,6 +1801,21 @@ int inputInit(void)
         if (padDeadzoneR == 7000) padDeadzoneR = STICK_DEADZONE;
         inputDefaultsRev = 1;
     }
+#if defined(PLATFORM_SWITCH)
+    /* project-dam: inis written by 0.1.0 carry the N64 aim style as a plain
+     * default; move them to Centred once. A later choice is kept. */
+    if (nxDefaultsRev < 1) {
+        aimMode = AIMMODE_CENTRED_SWAY;
+        nxDefaultsRev = 1;
+    }
+    /* Right-stick deadzone 10 % instead of the desktop 25 %: modern shooters
+     * use 5-12 %, and 25 % swallowed the small aim movements. Only the
+     * untouched default moves; a value the player set is kept. */
+    if (nxDefaultsRev < 2) {
+        if (padDeadzoneR == STICK_DEADZONE) padDeadzoneR = NX_STICK_DEADZONE_R;
+        nxDefaultsRev = 2;
+    }
+#endif
     if (getenv("GE_BINDPROBE")) inputBindingProbe();
 
     sysLogPrintf(LOG_INFO, "input: PC bindings, crouch mode %s",
@@ -3032,16 +3064,16 @@ static unsigned inputComputePadSlot(int idx, signed char *stick_x, signed char *
             int rys = -scaleAxis(ry, padDeadzoneR);   /* SDL up = negative -> N64 up = positive */
             if (padLookSensX != 100 && rxs) rxs = rxs * padLookSensX / 100;
             if (padLookSensY != 100 && rys) rys = rys * padLookSensY / 100;
-            if ((padAimSens != 100 || padAimCurve != 100) && slotPlayer() != NULL &&
-                slotPlayer()->insightaimmode) {
-                const double g = padAimCurve / 100.0, k = padAimSens / 100.0;
-                double nx = fmin(1.0, fabs((double)rxs) / STICK_MAX);
-                double ny = fmin(1.0, fabs((double)rys) / STICK_MAX);
-                nx = pow(nx, g) * k * STICK_MAX;
-                ny = pow(ny, g) * k * STICK_MAX;
-                rxs = rxs < 0 ? -(int)lround(nx) : (int)lround(nx);
-                rys = rys < 0 ? -(int)lround(ny) : (int)lround(ny);
+#if defined(PLATFORM_SWITCH)
+            /* project-dam: aim sensitivity, a multiplier on the stick while the
+             * game is in aim mode (ZL held, or Toggle), like a shooter's ADS
+             * sensitivity: camera turn speed in Centered, crosshair speed in
+             * Original. */
+            if (padAimLookSens != 100 && slotPlayer() != NULL && slotPlayer()->insightaimmode) {
+                rxs = rxs * padAimLookSens / 100;
+                rys = rys * padAimLookSens / 100;
             }
+#endif
             if (rxs >  STICK_MAX) rxs =  STICK_MAX; else if (rxs < -STICK_MAX) rxs = -STICK_MAX;
             if (rys >  STICK_MAX) rys =  STICK_MAX; else if (rys < -STICK_MAX) rys = -STICK_MAX;
             if (idx == 0 && (rxs || rys)) s_aimDevMouse = 0;   /* D337: pad aim active */
@@ -3891,6 +3923,68 @@ static int hipDirectCompute(double dxPx, double dyLook)
  * stick). With the verbatim curve, full-stick Centred turns at exactly
  * the N64 path's top rate -- switching modes changes the crosshair
  * behaviour, not the feel. */
+#if defined(PLATFORM_SWITCH)
+/* project-dam: weapon sway for "Centered + sway". Off aim, the game itself
+ * swings the weapon with the turn: bondview2.c feeds speedtheta * 0.3 and
+ * -speedverta * 0.1 into the crosshair and weapon integrators every tick
+ * (sub_GAME_7F067F58), and the weapon settles at its own AimLockSpeed. In
+ * Centred the port turns the camera itself (padDirectCompute), speedtheta
+ * stays 0 and the weapon never moves. This feeds a turn of the same size into
+ * the weapon only (gun_azimuth_angle/_turning), against the turn, so the
+ * weapon trails the view like a modern shooter's weapon lag; the crosshair
+ * stays at the centre, and shots go to crosshair_angle (gunfire.c), so the
+ * sway is visual. speedTheta/speedVerta are the camera's
+ * turn rates after the natural-turn curve, as the game would hold them. */
+static void padAimSway(struct player *p, double speedTheta, double speedVerta)
+{
+    if (aimMode != AIMMODE_CENTRED_SWAY) {
+        return;
+    }
+    p->gun_azimuth_angle   -= (f32)(speedTheta * 0.3);    /* trails the turn */
+    p->gun_azimuth_turning -= (f32)(-speedVerta * 0.1);
+}
+#endif
+
+#if defined(PLATFORM_SWITCH)
+/* project-dam: the Centred stick response. padLookCurveApply(): |v|^(Input.
+ * PadLookCurve / 100) with v's sign; the game's natural turn is v^2 (200), a
+ * higher exponent gives small deflections finer control at the same top
+ * speed. padTurnAccelGain(): modern shooters' edge acceleration -- the stick
+ * held at full deflection for 0.2 s ramps the horizontal turn up over 0.4 s,
+ * to 1.5x (low) or 2x (high), so wide turns stay fast while the curve keeps
+ * aim fine. */
+static double padLookCurveApply(double v)
+{
+    const double g = padLookCurve / 100.0;
+    return v >= 0.0 ? pow(v, g) : -pow(-v, g);
+}
+
+static double padTurnAccelGain(struct player *p, double vraw)
+{
+    static struct { struct player *p; Uint32 since; } st[4];
+    if (padTurnAccel <= 0) {
+        return 1.0;
+    }
+    int slot = 0;
+    for (int i = 0; i < 4; i++) {
+        if (st[i].p == p) { slot = i; break; }
+        if (st[i].p == NULL) { st[i].p = p; slot = i; break; }
+    }
+    const Uint32 now = SDL_GetTicks();
+    if (fabs(vraw) < 0.95) {
+        st[slot].since = 0;
+        return 1.0;
+    }
+    if (st[slot].since == 0) {
+        st[slot].since = now ? now : 1;
+    }
+    const double held = (now - st[slot].since) / 1000.0;
+    const double ramp = held <= 0.2 ? 0.0 : (held >= 0.6 ? 1.0 : (held - 0.2) / 0.4);
+    const double top = padTurnAccel >= 2 ? 2.0 : 1.5;
+    return 1.0 + (top - 1.0) * ramp;
+}
+#endif
+
 static int padDirectCompute(int dx, int dy)
 {
     struct player *p = slotPlayer();
@@ -3911,15 +4005,31 @@ static int padDirectCompute(int dx, int dy)
 
     v = (double)dx / 70.0;   /* analogTurn = raw stick \u00b1 5, /70 -- bondview2.c:6222 */
     if (v > 1.0) v = 1.0; else if (v < -1.0) v = -1.0;
+#if defined(PLATFORM_SWITCH)
+    {
+        const double vraw = v;
+        v = padLookCurveApply(v) * padTurnAccelGain(p, vraw);
+    }
+#else
     if (v >= 0.0) v *= v; else v = -v * v;
+#endif
     p->vv_theta += (f32) (v * k * 3.5);
+    const double speedTheta = v * k;
 
     v = (double)dy / 70.0;   /* analogPitch, /70 -- bondview2.c:6161 */
     if (v > 1.0) v = 1.0; else if (v < -1.0) v = -1.0;
+#if defined(PLATFORM_SWITCH)
+    v = padLookCurveApply(v);
+#else
     if (v >= 0.0) v *= v; else v = -v * v;
+#endif
+    const double speedVerta = -v * k;
     p->vv_verta -= (f32) (v * k * 3.5);   /* game: speedverta = -v\u00b7(fov/60) */
     if (p->vv_verta >  90.0f) p->vv_verta =  90.0f;
     if (p->vv_verta < -90.0f) p->vv_verta = -90.0f;
+#if defined(PLATFORM_SWITCH)
+    padAimSway(p, speedTheta, speedVerta);
+#endif
 
     if (configGetInputLog()) {
         sysLogPrintf(LOG_NOTE,
@@ -4248,7 +4358,14 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
     configRegisterInt("Input.MouseAimSpeed", &mouseAimSpeed, 1, 500);
     configRegisterInt("Input.PdMouseAim",     &pdMouseAim,     0, 1);   /* legacy -> AimStyle 1 */
     configRegisterInt("Input.AimStyle",       &aimStyleLegacy, 0, 2);   /* D333 legacy -> AimMode */
+#if defined(PLATFORM_SWITCH)
+    configRegisterInt("Input.AimMode",        &aimMode,        0, 2);   /* D337; 2 = Centred + sway (project-dam) */
+#else
     configRegisterInt("Input.AimMode",        &aimMode,        0, 1);   /* D337 */
+#endif
+#if defined(PLATFORM_SWITCH)
+    configRegisterInt("Input.NxDefaultsRev",  &nxDefaultsRev,  0, 2);   /* project-dam */
+#endif
     configRegisterInt("Input.AimLegacyGepd",  &aimLegacyGepd,  0, 1);   /* D337 hidden fallback */
     configRegisterInt("Input.AimRange",       &aimRange,       0, 1);   /* D338 PC / N64 */
     configRegisterInt("Input.AimAbsolute", &aimAbsolute, 0, 1);  /* D194 */
@@ -4287,9 +4404,12 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
     configRegisterInt("Input.PadDeadzoneR", &padDeadzoneR, 0, 30000);  /* Wave A: right (look) stick */
     configRegisterInt("Input.DefaultsRev", &inputDefaultsRev, 0, 1);   /* D546 */
     configRegisterInt("Input.PadLookSensX", &padLookSensX, 25, 200);   /* Wave A: look horizontal sensitivity (%) */
-    configRegisterInt("Input.PadLookSensY", &padLookSensY, 25, 200);   /* Wave A: look vertical (pitch) sensitivity (%) */
-    configRegisterInt("Input.PadAimSens", &padAimSens, 25, 200);     /* project-dam: aim-mode stick sensitivity (%) */
-    configRegisterInt("Input.PadAimCurve", &padAimCurve, 100, 300);  /* project-dam: aim-mode stick curve, gamma x100 */
+    configRegisterInt("Input.PadLookSensY", &padLookSensY, 25, 200);
+#if defined(PLATFORM_SWITCH)
+    configRegisterInt("Input.PadAimLookSens", &padAimLookSens, 25, 200);   /* project-dam */
+    configRegisterInt("Input.PadLookCurve", &padLookCurve, 100, 400);      /* project-dam */
+    configRegisterInt("Input.PadTurnAccel", &padTurnAccel, 0, 2);          /* project-dam */
+#endif   /* Wave A: look vertical (pitch) sensitivity (%) */
     configRegisterInt("Input.PadSouthpaw", &padSouthpaw, 0, 1);        /* Wave A: swap fire/grenade triggers */
     configRegisterInt("Input.PadLookSmooth", &padLookSmooth, 0, 10);   /* Wave A: look low-pass strength, 0-10 (0 = off) */
     configRegisterInt("Input.PadTriggerPct", &padTriggerPct, 1, 99);
