@@ -1,10 +1,5 @@
 # Changelog
 
-## [Unreleased] - minor
-
-### Changed
-- Faster rendering of busy scenes: vertex data goes to the GPU through one streaming buffer instead of a new buffer per draw, about three times cheaper per draw on the console
-
 All notable changes to Project Dam, the Nintendo Switch port of the
 [GoldenEye 007 PC port](https://github.com/jkdansereau/goldeneye-pc-port).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -13,6 +8,14 @@ tagged `project-dam-vX.Y.Z`; the `vX.Y.Z` tags are upstream's.
 
 Changes to the game itself (fixes, options, the PC builds) come from upstream
 and are listed in its release notes; this version is built on upstream v0.6.0.
+
+## [Unreleased] - minor
+
+### Changed
+- Faster rendering of busy scenes: vertex data goes to the GPU through one streaming buffer instead of a new buffer per draw, about three times cheaper per draw on the console
+
+### Fixed
+- Restart Game no longer shows at the bottom of the options menu on the Switch, where it could only quit the game
 
 ## [0.1.0] - 2026-11-11
 

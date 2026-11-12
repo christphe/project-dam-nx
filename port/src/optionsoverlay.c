@@ -1141,7 +1141,7 @@ static void overlayUpdateVisible(void)
         for (int k = 0; k < NUM_ROOTS; k++)
             s_visIdx[s_visN++] = optionsRootHeader(k);
         for (int i = 0; i < NUM_ROWS; i++)
-            if (rows[i].hub) s_visIdx[s_visN++] = i;
+            if (rows[i].hub && rowPlatformOk(&rows[i])) s_visIdx[s_visN++] = i;
     }
     if (s_visN == 0) {   /* cannot happen (toggles have no hide source) */
         s_visIdx[s_visN++] = 0;
