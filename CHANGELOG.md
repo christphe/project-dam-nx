@@ -3,6 +3,7 @@
 ## [Unreleased] - minor
 
 ### Added
+- Blood on hit (Game page, on by default): a bullet in a guard's body makes a red puff instead of the wall's pale-yellow one, so hits read as hits; off restores the original game
 - Look precision and Turn acceleration on the Controller page: a steeper stick curve (3.0 by default, the original game uses 2.0) for fine aim, and a turn that speeds up when the stick is held at the edge (Low by default) for wide turns
 - Centered + sway aim style, the default on the Switch: the crosshair stays at the centre and the weapon trails the camera when it turns, then settles back at the weapon's own pace
 - Aim sensitivity on the Controller page: how fast the right stick turns while aiming (0.5x by default)

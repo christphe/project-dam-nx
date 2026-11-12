@@ -462,6 +462,10 @@ static struct Row rows[] = {
     /* D606 (#144): PD-style always-visible mission timer; drawn top-right
      * (under the FPS readout when both are on) while a stage is active. */
     { .key="Game.MissionTimer", .label="Mission timer", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
+#if defined(__SWITCH__)
+    /* project-dam: red puff on a guard hit instead of the wall puff (nxgame.c). */
+    { .key="Game.BloodOnHit", .label="Blood on hit", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
+#endif
     SEP(G4),
     /* D551: opt-in update check; the action row appears only once a newer release is known. */
     { .key="Game.CheckUpdates", .label="Check for updates", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
@@ -1664,6 +1668,12 @@ static void rowSetCommit(struct Row *r, double v, int commit)
         extern void portAllUnlockedApply(void);
         portAllUnlockedApply();
     }
+#if defined(__SWITCH__)
+    if (strcmp(r->key, "Game.BloodOnHit") == 0) {   /* project-dam */
+        extern void nxGameApply(void);
+        nxGameApply();
+    }
+#endif
 
     /* Linked aim/turn sensitivity (Input.SensLink, default on): moving either
      * knob scales the other to hold the stock default ratio -- AimModeSens 38
@@ -2184,6 +2194,9 @@ static const struct { const char *key; double def; } kResetDefaults[] = {
     { "Game.SkipIntro",   0 },   /* = 0 */
     { "Game.CheckUpdates", 0 },  /* = 0 (off, D551) */
     { "Game.MissionTimer", 0 },  /* = 0 (off, D606) */
+#if defined(__SWITCH__)
+    { "Game.BloodOnHit", 1 },    /* project-dam: = on */
+#endif
     { "Game.NoHitFlash",  0 },   /* = 0 */
     { "Game.AllUnlocked", 0 },   /* = 0 -- D257's "default ON" note was stale */
     { "Game.HudScale",   100 },  /* = 100 (D226) */

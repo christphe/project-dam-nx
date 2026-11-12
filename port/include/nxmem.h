@@ -42,6 +42,10 @@ void nxSetThreadCore(int idealCore);
  * mirror: portN64ToHost() then folds KSEG0 addresses onto V1 in software. */
 extern int g_nxDramK0Folded;
 
+/* port/src/switch/nxgame.c: applies the Switch gameplay feedback options
+ * (Game.BloodOnHit) to the game's data; at boot and on every change. */
+void nxGameApply(void);
+
 /* End the process at once, every thread included, after flushing stdio.
  * exit() would close the system services (applet, audio, nv) while the
  * game's other threads still run, and the first of them to call one
