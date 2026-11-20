@@ -4,27 +4,31 @@
 
 <h1 align="center">Project Dam</h1>
 
-> A Nintendo Switch fork of the [GoldenEye 007 PC Port](https://github.com/jkdansereau/goldeneye-pc-port)
-> by [James Dansereau](https://github.com/jkdansereau) and its contributors.
+> An opinionated fork of the [GoldenEye 007 PC Port](https://github.com/jkdansereau/goldeneye-pc-port)
+> by [James Dansereau](https://github.com/jkdansereau) and its contributors,
+> aimed first at the Nintendo Switch, and still built for PC.
 
-**Project Dam runs GoldenEye 007 (1997) on the Nintendo Switch, as homebrew.**
-The game itself, its fixes and its options are the upstream PC port's work,
-built from the [GoldenEye 007 decompilation](https://github.com/n64decomp/007).
-This fork compiles that port for the console (devkitA64, libnx) and adds what
-the Switch needs: the N64 address window under Horizon, fullscreen at 1080p
-docked and 720p handheld, the Nintendo button layout, finer aim for the Joy-Con
-stick, and a clean return to the HOME menu. It is unofficial and ships no game
-content: you need your own US ROM.
+**Project Dam runs GoldenEye 007 (1997) natively on the Nintendo Switch, as
+homebrew, and on Windows and Linux.** It is not an emulator: the game is
+compiled from the [GoldenEye 007 decompilation](https://github.com/n64decomp/007)
+and runs from your own ROM. The game itself, its fixes and its options are the
+upstream PC port's work. This fork compiles it for the console (devkitA64,
+libnx) and adds what the Switch needs: the N64 address window under Horizon,
+fullscreen at 1080p docked and 720p handheld, the Nintendo button layout, finer
+aim for the Joy-Con stick, and a clean return to the HOME menu. It also makes
+its own choices (hence "opinionated"): visual improvements such as the GE+ sky
+and anti-aliasing, co-op, and aim helpers, grouped under a Display mode of
+**Enhanced**, **Original** or **Custom**. Original gives you the game's own
+picture back. It is unofficial and ships no game content: you need your own US
+ROM.
 
-- **Download:** [latest release](../../releases/latest); the archive's
+- **Download (Switch only for now):** [latest release](../../releases/latest); the archive's
   `README.txt` has the install steps.
 - **Changes:** [CHANGELOG.md](CHANGELOG.md) for this fork; the game's own
   changes are in [upstream's releases](https://github.com/jkdansereau/goldeneye-pc-port/releases).
-- **Build:** `docker compose build`, then `docker compose run --rm switch`;
-  the NRO lands in `build-switch/`. Address model notes:
-  [docs/switch/address-model.md](docs/switch/address-model.md).
-- **Bugs:** a problem on the Switch belongs here; a problem you also see on
-  the PC version belongs [upstream](https://github.com/jkdansereau/goldeneye-pc-port/issues).
+- **Build:** [Building from source](#building-from-source).
+- **Bugs:** a problem in this fork belongs here; a problem you also see in the
+  upstream PC port belongs [upstream](https://github.com/jkdansereau/goldeneye-pc-port/issues).
 
 ### Credits and license
 
@@ -38,39 +42,13 @@ content: you need your own US ROM.
 - GoldenEye 007 is a trademark of its owners; this project is not affiliated
   with Nintendo, Rare, Microsoft or MGM.
 
-The rest of this page is the upstream README, about the PC port this fork is
-built on.
-
----
-
-<p align="center">
-  <img src="docs/img/icon/ge007-icon.png" width="112" alt="GoldenEye 007 PC Port">
-</p>
-
-<h1 align="center">GoldenEye 007 PC Port</h1>
-
-<p align="center">
-  The original Nintendo 64 GoldenEye 007 (1997) as a native game for Windows,
-  Linux, Steam Deck and macOS (Apple Silicon).
-</p>
-
-The GoldenEye 007 PC Port is a native port built from the game's own
-reconstructed source code (the [GoldenEye 007 decompilation](https://github.com/n64decomp/007)),
-in the same family as the [Perfect Dark PC port](https://github.com/fgsfdsfgs/perfect_dark).
-It is not an emulator: the game is compiled for your PC and runs from your own
-ROM, with native widescreen, 60 fps or more (up to 240 on fast displays),
-mouse and keyboard or a modern controller, split-screen for up to 4 players,
-and an in-game options menu.
-
-### [Download the latest release](https://github.com/jkdansereau/goldeneye-pc-port/releases/latest)
-
 **This repository and its downloads contain no ROM data and none of the
 original game assets. You need your own GoldenEye 007 ROM (US version) to play.**
 
 <p align="center">
   <img src="docs/media/goldeneye-gh-preview.gif" width="64%"
-       alt="GoldenEye 007 running natively on PC: the Facility, the Dam sniper rifle and split-screen multiplayer">
-  <br><em>Recorded in the port: the Facility intro, the Archives, the Dam
+       alt="The upstream PC port running natively: the Facility, the Dam sniper rifle and split-screen multiplayer">
+  <br><em>Recorded in the upstream PC port: the Facility intro, the Archives, the Dam
   sniper rifle, Silo, a 2-player match and the Dam ending.</em>
 </p>
 
@@ -79,7 +57,7 @@ original game assets. You need your own GoldenEye 007 ROM (US version) to play.*
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Controls](#controls)
-- [What this port offers](#what-this-port-offers)
+- [What this fork offers](#what-this-fork-offers)
 - [FAQ](#faq)
 - [Status](#status)
 - [Roadmap](#roadmap)
@@ -91,34 +69,36 @@ original game assets. You need your own GoldenEye 007 ROM (US version) to play.*
 
 ## Requirements
 
-- **Windows:** Windows 10 or 11, 64-bit. Nothing to install: the download
-  carries its own runtime libraries and the one-time asset tool.
-- **Linux and Steam Deck:** 64-bit x86 Linux with glibc 2.31 or newer (Ubuntu
-  20.04+, Debian 11+, Fedora 32+, SteamOS). SDL2 is bundled.
-- **macOS (experimental):** an Apple Silicon Mac (M1 or later) on macOS 14 or
-  newer.
-- **Graphics:** OpenGL 3.0 (practically any PC GPU from the last fifteen
-  years). A 2011 laptop with Intel HD 3000 graphics holds 60 fps.
-- **Input:** keyboard and mouse, or an Xbox, PlayStation, Switch or other
-  SDL-supported controller; split-screen needs one controller per extra player.
+- **Nintendo Switch:** a console running custom firmware with the homebrew
+  menu. Launch through title takeover (hold R while starting a game), not from
+  the album applet: the game needs the full application memory.
+- **Windows and Linux (PC):** 64-bit x86. No PC release yet: build from source
+  (see below). The renderer is Vulkan, with OpenGL 3.0 as the fallback.
+- **Input:** Switch controllers; on PC, keyboard and mouse or an
+  SDL-supported controller. Split-screen and co-op need one controller per
+  player.
+- **A ROM:** GoldenEye 007, US (NTSC-U) version, big-endian `.z64`
+  ([check your ROM](docs/user-guide.md#whats-a-rom)).
 
 ## Quick start
 
-1. Download the build for your system from
-   [Releases](https://github.com/jkdansereau/goldeneye-pc-port/releases/latest)
-   and extract it. On Windows, don't run the exe from inside the zip.
-2. Make a `data/` folder next to the executable and put your ROM in it as
-   `ge007.ntsc-final.z64` (US version; [check your ROM](docs/user-guide.md#whats-a-rom)).
-3. Launch the game. The first start takes a few extra seconds while it
-   prepares the game files from your ROM.
-   - **Windows:** if SmartScreen appears (the exe isn't code-signed), click
-     **More info**, then **Run anyway**.
-   - **Steam Deck:** add the executable as a non-Steam game. It starts in
-     native 1280x800 fullscreen.
-   - **macOS:** run `xattr -dr com.apple.quarantine <folder>` once in
-     Terminal, then start `./ge007.aarch64`
-     (see the [macOS setup details](docs/user-guide.md#macos-apple-silicon-experimental)).
-4. Play. **F10** (controller: **Select**) opens the options menu.
+**Switch**
+
+1. Copy the `switch/` folder of the release archive to the root of the SD card.
+2. Copy your ROM to `switch/project-dam/data/ge007.ntsc-final.z64`.
+3. Start **Project Dam** from the homebrew menu. The first launch converts the
+   ROM, with a progress bar (a few seconds); later launches skip it. Press A
+   when it is done.
+
+Settings, saves and logs live in `switch/project-dam/data/`.
+
+**PC**
+
+1. Build the game ([Building from source](#building-from-source)).
+2. Put your ROM in a `data/` folder next to the executable as
+   `ge007.ntsc-final.z64`.
+3. Launch it. The first start converts the ROM by itself, as on the Switch.
+4. **F10** (controller: **Select**) opens the options menu.
 
 ## Controls
 
@@ -138,83 +118,73 @@ original game assets. You need your own GoldenEye 007 ROM (US version) to play.*
 | Start               | `Enter` / `Tab`          | Start         |
 | Options menu        | `F10`                    | Select        |
 
+The table uses Xbox-style labels; on the Switch the buttons follow the labels
+printed on the controller, and the options menu shows every binding.
 Everything is rebindable in the options menu. Rare's Xbox control styles are
 presets, and the **Original** control style turns your pad into an N64
 controller. The [user guide](docs/user-guide.md#controls) covers control
 styles, rebinding and split-screen.
 
-## What this port offers
+## What this fork offers
 
 - **Real 60 fps, not a speed hack.** The game's logic counts time in 60 Hz
-  ticks. On the N64 it only drew a frame every 2–3 ticks (20–30 fps); here it
-  draws every tick, so you get 60 fps with the game, physics and AI running
-  at the N64's own speed. There is no CPU overclock or frame-skip patch involved,
-  and the few spots in the game that behaved differently at one tick per frame
-  are fixed to match the N64. Above 60 (90 to 240, or Auto), extra
-  frames are blended between ticks for smoothness, at the cost of one tick of
-  latency.
+  ticks. On the N64 it only drew a frame every 2-3 ticks (20-30 fps); here it
+  draws every tick, so you get 60 fps with the game, physics and AI running at
+  the N64's own speed. The few spots that behaved differently at one tick per
+  frame are fixed to match the N64.
 - **Aiming that doesn't feel floaty.** *Aim style* picks the behavior.
-  **Centered** pins the crosshair in the middle, and the mouse or the right
-  stick turns the camera directly, like a modern shooter. **Original** keeps
-  the N64's crosshair that moves a little before the camera follows. The stick
-  has separate horizontal and vertical sensitivity, separate deadzones for each
-  stick, look smoothing and a trigger threshold. The mouse has raw input, an aim
-  curve, smoothing, and separate turn and aim-mode sensitivities.
-- **Dual analog and mouse and keyboard, built in.** No emulator remapping. The
-  right stick looks, the triggers fire and aim, and every button is rebindable,
-  for the keyboard, the mouse and each controller. Rare's Xbox control styles are
-  presets. If you want the N64 exactly, the **Original** control style turns the
-  pad into a strict virtual N64 controller.
-- **The whole game.** All 20 solo missions and the credits, with every
-  difficulty, 007 mode and the cheats, plus split-screen multiplayer for up to
-  4 players. Your emulator saves (1964, Project64) load directly.
-- **Faithful by construction.** It is the game's own reconstructed source
-  compiled natively, not an emulator and not a remake, so levels, guards and
-  weapons behave the way the N64 cartridge does. The few changes to game code
-  either keep that N64 behavior where the PC would otherwise differ (frame
-  rate, widescreen, compiler) or are opt-in extras, and the **Original N64**
-  display preset switches every visual improvement off at once.
-- **Modern display options:** native widescreen and ultrawide at any aspect ratio, high
-  resolutions, MSAA, adjustable FOV and draw distance, and HUD scaling.
-- **Windows, Linux, Steam Deck and (experimental) macOS** from one download
-  page, with an in-game options menu on F10 or the pad's Select button.
+  **Centered** pins the crosshair in the middle and the stick (or mouse) turns
+  the camera directly, like a modern shooter. **Original** keeps the N64's
+  crosshair that moves a little before the camera follows. Both sticks have
+  their own sensitivity, deadzone and smoothing; on the Switch, aim zoom and
+  aim assist make a head big enough to hit on the handheld screen.
+- **Dual analog built in.** No emulator remapping: the right stick looks, the
+  triggers fire and aim, and every button is rebindable. Rare's Xbox control
+  styles are presets, and the **Original** control style turns the pad into a
+  strict virtual N64 controller.
+- **The whole game.** All 20 solo missions and the credits, every difficulty,
+  007 mode and the cheats, plus split-screen multiplayer for up to 4 players.
+  **Co-op** (Switch) runs a solo mission for two players in split screen, with
+  revive and friendly fire.
+- **Display mode: Enhanced, Original or Custom.** Enhanced adds this fork's
+  visual improvements, such as the GE+ sky and sea, corrected display flaws and
+  anti-aliasing (MSAA, FXAA). **Original** is the game's own picture. Custom
+  exposes the individual options: aspect, widescreen, VSync, frame cap,
+  texture filter, anisotropy, and draw, fog and LOD distance.
+- **Faithful logic.** It is the game's own reconstructed source compiled
+  natively, so levels, guards and weapons behave the way the N64 cartridge
+  does. The few changes to game code keep N64 behavior where the platform would
+  otherwise differ, or are opt-in extras.
+- **Switch and PC from one source.** Switch is the main target and is
+  what the releases ship; Windows and Linux builds come from the same code.
 
-Bots, online play, mod support and PAL/JP ROMs are on the
-[Roadmap](#roadmap).
-
-The [user guide](docs/user-guide.md#feature-list) has the full feature list.
+Bots, online play, mod support and PAL/JP ROMs are not available. The
+[user guide](docs/user-guide.md#feature-list) has the full feature list.
 
 ## FAQ
 
 **Is this an emulator?**
-No. The game's code is compiled natively for your PC, the same way the
-Perfect Dark PC port works. Graphics go through OpenGL, and the N64 hardware
-is replaced by a small port layer.
+No. The game's code is compiled natively for the console or PC, the same way
+the Perfect Dark PC port works. The N64 hardware is replaced by a small port
+layer.
 
 **Do I need the game?**
-Yes. You need a ROM of the US (NTSC-U) version, dumped from a cartridge you
-own. PAL and Japanese ROMs are planned.
+Yes. You need a ROM of the US (NTSC-U) version, dumped from a cartridge you own.
 
 **Does it play like the original?**
 Yes. Levels, guards and weapons run on the game's own logic at its original
-speed. The **Original N64** display preset and the **Original** control style
-give you the N64 look and controls whenever you want them.
+speed. The **Original** display mode and the **Original** control style give
+you the N64 picture and controls whenever you want them.
 
-**Does it run on the Steam Deck?**
-Yes. The Linux download is the Deck build: add it as a non-Steam game and it
-starts in native 1280x800 fullscreen at up to 90 fps, with the options menu
-fully usable on the controller.
-
-**Does it support ultrawide and high refresh rates?**
-Yes. Native widescreen works at any aspect ratio, including ultrawide, and the
-frame rate goes up to 240 fps on fast displays (Auto matches your monitor).
+**Does it run on the Steam Deck or macOS?**
+Not tested in this fork. The [upstream port](https://github.com/jkdansereau/goldeneye-pc-port)
+targets both.
 
 **Is there online play, bots or mod support?**
-Not today. LAN play, bots and mod support are on the [roadmap](#roadmap) as
-opt-in extras.
+No.
 
 **Can I use HD textures?**
-Not in this release. A texture-pack loader is planned for 1.0.
+No.
 
 **How is this different from the XBLA recompilation projects?**
 Those projects statically recompile the unreleased Xbox 360 remaster, a
@@ -222,76 +192,66 @@ separate version of the game. This project ports the original N64 game from
 its source code. See [About the project](docs/about.md#how-this-differs-from-the-other-goldeneye-pc-projects).
 
 **Can I keep my saves?**
-Yes. Your progress is a plain file, `data/ge007.eep`. Saves from 1964 or
-Project64 load directly (see [using an emulator save](docs/user-guide.md#using-an-emulator-save)),
-and updating keeps your save and settings (see [updating](docs/user-guide.md#updating)).
+Yes. Your progress is a plain file, `ge007.eep`, in the `data/` folder (on the
+Switch, `switch/project-dam/data/`). Saves from 1964 or Project64 load
+directly (see [using an emulator save](docs/user-guide.md#using-an-emulator-save)).
 
 **Was AI used to build it?**
-Yes. The port was developed with AI coding agents directed by one maintainer.
-Releases are checked by comparing captured frames from all 21 solo levels on
-Windows, crash sweeps on four platforms, and play-testing.
-[How it was made](docs/about.md#how-it-was-made) has the full story.
+Yes. The upstream port was developed with AI coding agents directed by one
+maintainer, and this fork's changes are made with Claude Code.
+[How it was made](docs/about.md#how-it-was-made) has the upstream story.
 
 **Something went wrong.**
 See [Troubleshooting](docs/user-guide.md#troubleshooting), or
-[open an issue](https://github.com/jkdansereau/goldeneye-pc-port/issues/new/choose)
-with `ge007.crash.log`, your OS and GPU. Never attach the ROM.
+[open an issue](../../issues/new/choose) with `ge007.log` (and
+`ge007-crash.log` after a crash) and your console or OS and GPU. Never attach
+the ROM.
 
 ## Status
 
-**v0.6.0 is the current release.** The whole campaign, the end credits and
-split-screen multiplayer are playable on Windows, Linux, Steam Deck and macOS.
-The project is pre-1.0, so expect new features and the occasional change
-between versions. Known issues and workarounds are in the
-[known-issues table](docs/ROADMAP.md#known-issues);
-[About the project](docs/about.md#status-in-detail) has the testing details and
-the [release history](docs/about.md#release-history).
+Project Dam is pre-1.0 and changes between versions: see the
+[CHANGELOG](CHANGELOG.md) for what is in the next release and what each one
+changed. The Switch is the primary target and is tested on Ryujinx and on a
+console; the PC build compiles and runs but is not released yet: PC releases will
+come once the PC rendering is where it should be.
+Known issues are in the [known-issues table](docs/ROADMAP.md#known-issues).
 
 ## Roadmap
 
-The goal is a **feature-complete, faithful** port: every mode and region the
-N64 cartridge ships, with modern options on top that can always be switched
-back to the original look and feel. Next up:
-
-- **PAL and JP ROM support** in the release packages
-  ([#85](https://github.com/jkdansereau/goldeneye-pc-port/issues/85)).
-- **A notarized macOS build**, Intel Macs and ARM Linux.
-- **A texture-pack loader** for HD texture packs.
-- **The 1.0 sign-off:** a full campaign playthrough and a split-screen session
-  on every platform that ships.
-
-After 1.0, opt-in extras that are always off by default: LAN play, bots,
-co-op and enhanced visuals. The full tracker is
-[`docs/ROADMAP.md`](docs/ROADMAP.md). If something matters to you, open an
-issue; it helps prioritize.
+Open work is tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md). If something
+matters to you, open an issue; it helps prioritize.
 
 ## Building from source
 
-You need CMake 3.16+, a C/C++ toolchain, SDL2, zlib, OpenGL and Python 3, plus
-a one-time asset extraction from your ROM. On Windows, build in the MSYS2
-MINGW64 shell; on macOS, use Homebrew's GNU `gcc`.
+No ROM is needed to build: the game reads yours at run time. All three targets
+build in Docker:
 
 ```sh
-git clone https://github.com/jkdansereau/goldeneye-pc-port.git
-cd goldeneye-pc-port
-# extract assets from your ROM first (see docs/building.md), then:
-./build-pc.sh ntsc-final
+docker compose build                    # once: devkitA64 + Linux host libs
+docker compose run --rm switch          # -> build-switch/ge007.aarch64.nro
+docker compose run --rm linux           # -> build-linux/ge007.x86_64
+docker compose build windows            # once: MinGW-w64
+docker compose run --rm windows         # -> build-win/ge007.x86_64.exe + DLLs
 ```
 
-[`docs/building.md`](docs/building.md) has the full walkthrough for Windows,
-Linux and macOS.
+A native Windows build from the MSYS2 MINGW64 shell (`./build-pc.sh ntsc-final`)
+also works. [`docs/building.md`](docs/building.md) has the details, the SD-card
+layout and the nxlink test builds, and
+[`docs/switch/address-model.md`](docs/switch/address-model.md) the Switch
+address model.
 
 ## Documentation
 
-The docs are also published as a site:
-<https://jkdansereau.github.io/goldeneye-pc-port/>.
+The docs below are the upstream port's, adapted where this fork differs; the
+upstream site (<https://jkdansereau.github.io/goldeneye-pc-port/>) shows the
+unmodified PC port.
 
 | Doc | What's in it |
 |---|---|
 | [User guide](docs/user-guide.md) | Controls, settings and files, ROM check, macOS setup, updating, emulator saves, troubleshooting. |
 | [About the project](docs/about.md) | Release history, testing status, how it was made, how it works. |
 | [Roadmap](docs/ROADMAP.md) | Open work and the known-issues table. |
-| [Building](docs/building.md) | Full build and asset-extraction guide. |
+| [Building](docs/building.md) | Full build guide, and the ROM conversion. |
 | [Internals](docs/internals.md) | Architecture and the software RSP. |
 | [Porting notes](docs/porting-notes.md) | The recurring N64-to-PC bug classes, with fixes. |
 | [Security](docs/security.md) and [Fidelity](docs/fidelity.md) | What a release installs, and how closely it tracks the original game's logic. |
@@ -389,7 +349,7 @@ game this port runs. No official logos, box art, or marketing assets are used.
   license, the MinGW runtime on Windows, and the GCC C++ runtime on macOS
   (GPL-3.0 with the GCC Runtime Library Exception); their licenses travel in
   the download.
-- **The one-time asset tool**, which reads your ROM on your machine.
+- **The ROM converter**, built into the game, which reads your ROM on your machine.
 
 It contains **no ROM and no game assets of any kind**. Any build, yours or a
 release, is useless without a ROM you supply.
@@ -429,4 +389,4 @@ is covered by [`NOTICE`](NOTICE), not by that license.
 
 ---
 
-*v0.6.0 · 2026-10-13 · <a href="https://github.com/jkdansereau/goldeneye-pc-port/releases">Releases</a>*
+*Fork of upstream v0.6.0 · <a href="../../releases">Releases</a> · <a href="CHANGELOG.md">Changelog</a>*
