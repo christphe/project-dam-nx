@@ -32,6 +32,10 @@ The repo is public, MIT-licensed and forked, so these apply to anything tracked 
 5. **Batch, don't spam.** One commit per session for approved doc/tree fixes; no per-item branches.
 6. **Releases, squashes and history rebuilds** (PII and legal reports, contributor record merges, force-push backups): `docs/dev/RELEASE-GATE.md` §Release and history rules.
 
+## Options overlay
+
+Adding an option or writing its help text: `docs/options-overlay.md`.
+
 ## Critical files
 
 | File | Role |

@@ -144,8 +144,8 @@ styles, rebinding and split-screen.
   strict virtual N64 controller.
 - **The whole game.** All 20 solo missions and the credits, every difficulty,
   007 mode and the cheats, plus split-screen multiplayer for up to 4 players.
-  **Co-op** (Switch) runs a solo mission for two players in split screen, with
-  revive and friendly fire.
+  **Co-op** runs a solo mission for two to four players in split screen, with
+  revive and friendly fire (Switch and PC).
 - **Display mode: Enhanced, Original or Custom.** Enhanced adds this fork's
   visual improvements, such as the GE+ sky and sea, corrected display flaws and
   anti-aliasing (MSAA, FXAA). **Original** is the game's own picture. Custom
@@ -358,7 +358,7 @@ release, is useless without a ROM you supply.
 
 Textures, audio, models, level data and in-game text are extracted from a ROM
 *you already own*, on *your* machine, the first time you start the game. The
-port has no network access unless you turn on the opt-in *Check for updates* option (`Game.CheckUpdates`, off by default). When on, it makes one HTTPS request per launch to GitHub's releases API to look for a newer release (GitHub sees the request and your IP, as with any web request), never downloads or installs anything, and never uploads anything.
+port has no network access unless you turn on the opt-in *Check for updates* option (`Game.CheckUpdates`, off by default). When on, it makes one HTTPS request per launch to GitHub's releases API to look for a newer Project Dam release (GitHub sees the request and your IP, as with any web request) and never uploads anything. On the PC it only tells you and opens the release notes. On the Switch, "Update available" in the menu can also download the new `project-dam.nro`, check its sha256 against the one GitHub lists, and replace the running NRO, only when you choose it and only with at least 5% battery or on the charger.
 
 ### This repository
 
