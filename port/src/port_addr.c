@@ -232,8 +232,7 @@ void portAddrInit(void)
      * the same --base; cfb_16 is a region-independent sentinel for that. */
     if (PORT_CFB16_ADDR != (uintptr_t)PORT_ADDR_BASE + 0x70000000ULL) {
         sysFatalError("portAddr: dram_syms base mismatch (cfb_16=%p, expected 0x%llx). "
-                      "Regenerate with: scripts/gen_romassets.py <region> --darwin "
-                      "--base 0x%llx --rom-size <size> --out ... --dram-out ...",
+                      "Rebuild so that scripts/gen_macho_syms.py runs again with --base 0x%llx.",
                       (void *)PORT_CFB16_ADDR,
                       (unsigned long long)((uintptr_t)PORT_ADDR_BASE + 0x70000000ULL),
                       (unsigned long long)PORT_ADDR_BASE);
