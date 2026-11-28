@@ -335,13 +335,22 @@ static int ld_rd(void *user, const char *path, uint8_t **data, size_t *len)
 
 static void ld_fr(void *user, void *data) { (void)user; pkgFree(data); }
 
+/* The multiplayer-only maps: their folder name under levels/ in the base pack (docs/specs/asset-packs.md, the same names and
+ * stage numbers as the setup export). The campaign levels come from the mission table. */
+static const struct { int stage; const char *name; } k_mp_levels[] = {
+    { 31, "complex" }, { 38, "temple" }, { 40, "citadel" }, { 45, "basement" }, { 46, "stack" }, { 48, "library" }, { 50, "caves" },
+};
+
 static const char *stage_name(int stage)
 {
     for (int i = 0;; i++) {
         const char *n = missionLevelNameAt(i);
-        if (!n) return NULL;
+        if (!n) break;
         if (missionLevelNumber(n) == stage) return n;
     }
+    for (size_t i = 0; i < sizeof k_mp_levels / sizeof k_mp_levels[0]; i++)
+        if (k_mp_levels[i].stage == stage) return k_mp_levels[i].name;
+    return NULL;
 }
 
 static void publish(LdSet *s)

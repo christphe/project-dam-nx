@@ -59,7 +59,8 @@ set_property(TARGET test_leveldecor PROPERTY COMPILE_OPTIONS "")   # plain host 
 # The pack music (port/src/musicseq.c, musicpack.c): the sequencer, the slots and the stack reload, the asset stack stubbed.
 ge_add_pure_test(test_music test_music.c ${CMAKE_SOURCE_DIR}/port/src/musicseq.c ${CMAKE_SOURCE_DIR}/port/src/musicpack.c)
 target_compile_definitions(test_music PRIVATE MPK_PURE_TEST)
-target_include_directories(test_music PRIVATE "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/assets")
+set_property(TARGET test_music PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/assets")
+set_property(TARGET test_music PROPERTY COMPILE_OPTIONS "")   # plain host C: the N64 include/ stubs <stddef.h> and <stdlib.h> (D83)
 # CONSOLE mode precedence (port/include/console.h, header-only): pure, no core.
 ge_add_pure_test(test_console test_console.c)
 
