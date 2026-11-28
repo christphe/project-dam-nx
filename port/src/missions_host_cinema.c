@@ -867,21 +867,37 @@ static void hBodySetGravity(void *ud, int player, int on)
     else chr->chrflags |= CHRFLAG_LOCK_Y_POS;
 }
 
-static void hBodySetFlags(void *ud, int player, int mask, int values)
+static void applyChrFlags(ChrRecord *chr, int mask, int values)
 {
     static const struct { int bit; u32 flag; } map[] = {
-        { MHC_BF_HITBOX_CULL, CHRFLAG_CULL_USING_HITBOX },
-        { MHC_BF_HEIGHT_LOCK, CHRFLAG_LOCK_Y_POS },
-        { MHC_BF_KNOCKABLE,   CHRFLAG_IMPACT_ALWAYS },
+        { MHC_BF_HITBOX_CULL,   CHRFLAG_CULL_USING_HITBOX },
+        { MHC_BF_HEIGHT_LOCK,   CHRFLAG_LOCK_Y_POS },
+        { MHC_BF_KNOCKABLE,     CHRFLAG_IMPACT_ALWAYS },
+        { MHC_BF_SORTED,        CHRFLAG_00020000 },
+        { MHC_BF_NO_COLLISION,  CHRFLAG_00010000 },
     };
-    ChrRecord *chr = bodyChr(player);
-    (void)ud;
-    if (!chr) { say("bond_body:set_body_flags: the player has no third-person body now"); return; }
     for (size_t k = 0; k < sizeof map / sizeof map[0]; k++) {
         if (!(mask & map[k].bit)) continue;
         if (values & map[k].bit) chr->chrflags |= map[k].flag;
         else chr->chrflags &= ~map[k].flag;
     }
+}
+
+static void hBodySetFlags(void *ud, int player, int mask, int values)
+{
+    ChrRecord *chr = bodyChr(player);
+    (void)ud;
+    if (!chr) { say("bond_body:set_body_flags: the player has no third-person body now"); return; }
+    applyChrFlags(chr, mask, values);
+}
+
+/* set_body_flags on a guard (AI_SetChrchrflags on that chr) */
+static void hChrSetFlags(void *ud, int chrnum, int mask, int values)
+{
+    ChrRecord *chr = chrnum >= 0 ? chrFindByLiteralId(chrnum) : NULL;
+    (void)ud;
+    if (!chr || !chr->prop) { say("set_body_flags: no such guard in the level"); return; }
+    applyChrFlags(chr, mask, values);
 }
 
 /* the player invincible: the game's own per-player invincibility (as the world's player set_invincible) and the body chr's flag */
@@ -1115,7 +1131,7 @@ const MissionHostCinema *missionsHostCinema(void)
     h.body_teleport = hBodyTeleport; h.body_anim = hBodyAnim; h.body_anim_done = hBodyAnimDone;
     h.body_hold_item = hBodyHoldItem; h.body_show = hBodyShow; h.body_fade = hBodyFade; h.body_remove = hBodyRemove; h.body_set_shadow = hBodySetShadow;
     h.body_aim = hBodyAim; h.body_walk = hBodyWalk; h.body_drop_item = hBodyDropItem; h.body_set_gravity = hBodySetGravity;
-    h.body_set_flags = hBodySetFlags; h.body_set_invincible = hBodySetInvincible; h.show_hidden_chr = hShowHiddenChr;
+    h.body_set_flags = hBodySetFlags; h.chr_set_flags = hChrSetFlags; h.body_set_invincible = hBodySetInvincible; h.show_hidden_chr = hShowHiddenChr;
     h.set_frozen = hSetFrozen; h.hide_weapon = hHideWeapon; h.in_cutscene = hInCutscene;
     return &h;
 }

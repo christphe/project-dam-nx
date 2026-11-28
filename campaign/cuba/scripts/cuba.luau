@@ -23,6 +23,10 @@ natalya:teleport(0x2D)
 local bond: Target = bond_body(0)
 bond:teleport(0x2C)
 bond:show(true)
+-- The level's own ending sets CHRFLAG_00010000 | CHRFLAG_00020000 on both lovers: no collision box, and drawn with the
+-- translucent things in distance order. Without it they are drawn first and the foliage far behind them shows over them.
+bond:set_body_flags({ sorted = true, no_collision = true })
+natalya:set_body_flags({ sorted = true, no_collision = true })
 -- rule 2: whole animation with its root translation, played once and held on its last frame (nothing loops)
 bond:anim(0xB5, { hold = true })
 natalya:anim(0xB6, { hold = true })
@@ -43,16 +47,15 @@ spawn(function()
     end
 end)
 
--- Cinematics 1: third-person orbit around the couple (the midpoint of pads 0x2C and 0x2D), starting at 0x1C71 (40
--- degrees). The distance, the height and the speed are measured on the game's own ending (its camera logged frame by
--- frame): a circle of radius 300 around the couple's feet, the camera 100 above them, 18/65536 of a turn per tick (about
--- 5.9 degrees per second). The pads stand about 207 units above the feet, hence the look height.
+-- Cinematics 1: third-person orbit around pad 0x2E, the values of the level's own ending (its AI list, CameraOrbitPad):
+-- distance 300, 100 up, aimed 70 below the pad, starting at 0x1C71 (40 degrees), 18/65536 of a turn per tick (about
+-- 5.9 degrees per second).
 
 camera.orbit({
-    centre = { pad(0x2C), pad(0x2D) },
+    centre = pad(0x2E),
     distance = 300,
     height = 100,
-    look_height = -207,
+    look_height = -70,
     start_angle = 0x1C71 * 360 / 65536,
     speed = 18 * 60 * 360 / 65536,
 })

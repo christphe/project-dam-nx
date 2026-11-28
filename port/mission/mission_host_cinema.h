@@ -36,6 +36,9 @@ extern "C" {
 #define MHC_BF_HITBOX_CULL 1
 #define MHC_BF_HEIGHT_LOCK 2
 #define MHC_BF_KNOCKABLE   4
+#define MHC_BF_SORTED      8    /* CHRFLAG_00020000: drawn with the translucent things, far to near, so nearer ones hide it and it hides
+                                 * the farther ones (the level's own ending sets it on both lovers: the foliage behind them stays behind) */
+#define MHC_BF_NO_COLLISION 16  /* CHRFLAG_00010000: no collision box (the same ending sets it too) */
 
 /* What a camera is aimed at / centred on: a pad (index: the original pad number, >= 10000 bound), a setup prop
  * (index: the prop number; a camera object, or any prop with a pad), a player (index: 0-based) or a fixed point. */
@@ -137,6 +140,7 @@ typedef struct MissionHostCinema {
     void (*body_drop_item)(void *ud, int player, int left_hand);
     void (*body_set_gravity)(void *ud, int player, int on);
     void (*body_set_flags)(void *ud, int player, int mask, int values); /* MHC_BF_* bits in mask are set to their bit in values */
+    void (*chr_set_flags)(void *ud, int chr, int mask, int values);     /* the same on a guard's chr (its literal chr number) */
     void (*body_set_invincible)(void *ud, int player, int on);
     /* set_hidden(false) on a guard while hide_all_chrs(true) is in force: shows it; 0: not handled (no hide-all in force
      * or no such chr), the guard domain's set_hidden then does it */

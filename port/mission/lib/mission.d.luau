@@ -265,7 +265,12 @@ declare extern type Target with
     function walk_to(self, pad: Pad, speed: Speed?): boolean   -- on a body: walks there (scene)
     function drop_item(self, hand: string?)   -- on a body: drops what that hand holds ("right" default | "left")
     function set_gravity(self, on: boolean)   -- on a body: false holds it in the air (a jump, a fall)
-    function set_body_flags(self, flags: { hitbox_cull: boolean?, height_lock: boolean?, knockable: boolean? })
+    function set_body_flags(self, flags: { hitbox_cull: boolean?, height_lock: boolean?, knockable: boolean?, sorted: boolean?,
+                                           no_collision: boolean? })
+                                              -- on a body or a guard. sorted: drawn with the translucent things, far to near
+                                              -- (foliage behind it stays behind it; without it a character is drawn first and a leaf
+                                              -- far behind can show over it); no_collision: no collision box. The game's own
+                                              -- Cuba ending sets both on the two lovers
 end
 
 -- #165 types

@@ -125,6 +125,7 @@ static int  cWalk(void *u, int p, int pad, int sp) { callf(u, "walk(%d,%d,%d)", 
 static void cDrop(void *u, int p, int left) { callf(u, "drop(%d,%d)", p, left); }
 static void cGravity(void *u, int p, int on) { callf(u, "gravity(%d,%d)", p, on); }
 static void cFlags(void *u, int p, int mask, int v) { callf(u, "flags(%d,%d,%d)", p, mask, v); }
+static void cChrFlags(void *u, int chr, int mask, int v) { callf(u, "chrflags(%d,%d,%d)", chr, mask, v); }
 static void cInv(void *u, int p, int on) { callf(u, "inv(%d,%d)", p, on); }
 static int  cShowHidden(void *u, int chr) { callf(u, "showhidden(%d)", chr); return ((Fake *)u)->introDone; }   /* introDone: "hide_all is on" here */
 static int  fPropChr(void *u, int p) { (void)u; return p + 100; }
@@ -144,7 +145,7 @@ static MissionHostCinema cinemaHost(Fake *f)
     c.body_show = cShow; c.body_fade = cBodyFade; c.body_remove = cBodyRemove; c.body_set_shadow = cShadow; c.set_frozen = cFrozen; c.hide_weapon = cHideWeapon;
     c.in_cutscene = cInCutscene;
     c.body_aim = cAim; c.body_walk = cWalk; c.body_drop_item = cDrop; c.body_set_gravity = cGravity;
-    c.body_set_flags = cFlags; c.body_set_invincible = cInv; c.show_hidden_chr = cShowHidden;
+    c.body_set_flags = cFlags; c.chr_set_flags = cChrFlags; c.body_set_invincible = cInv; c.show_hidden_chr = cShowHidden;
     return c;
 }
 
@@ -526,6 +527,8 @@ int main(void)
         "b:drop_item()\n"
         "b:set_gravity(false)\n"
         "b:set_body_flags({ hitbox_cull = true, height_lock = false, knockable = true })\n"
+        "b:set_body_flags({ sorted = true, no_collision = true })\n"
+        "guard(2):set_body_flags({ sorted = true })\n"
         "b:set_invincible(true)\n"
         "message('tp ' .. tostring(b:teleport('dock')))\n"
         "camera.fixed(pad('dock'))\n"
@@ -555,6 +558,8 @@ int main(void)
         GE_CHECK(called(&f, "gravity(1,0);"));
         GE_CHECK(called(&f, "flags(1,5,5);") == 0);
         GE_CHECK(called(&f, "flags(1,7,5);"));                          /* mask: all three; values: hitbox_cull + knockable */
+        GE_CHECK(called(&f, "flags(1,24,24);"));                        /* sorted (8) + no_collision (16) */
+        GE_CHECK(called(&f, "chrflags(102,8,8);"));                     /* a guard: the host is given its chr (the fake's prop + 100) */
         GE_CHECK(called(&f, "inv(1,1);"));
         GE_CHECK(hasMsg(&f, "tp true"));
         GE_CHECK(called(&f, "teleport(1,77);"));                        /* a mission pad id on the body */

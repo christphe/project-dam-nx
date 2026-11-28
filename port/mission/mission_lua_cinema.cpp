@@ -738,12 +738,20 @@ int b_set_gravity(lua_State *L)
 int b_set_body_flags(lua_State *L)
 {
     const int p = bodyOf(L);
-    if (p < 0) return passOn(L, 0);
-    NEED(L, "bond_body:set_body_flags", body_set_flags)
+    const MissionHostCinema *h = cx(L);
+    int chr = -1;
+    if (p < 0) {   // a guard's chr: ours too; anything else goes to the earlier function
+        if (h && h->chr_set_flags && lua_istable(L, 1)) chr = missionLuaTgtChr(L, 1);
+        if (chr < 0) return passOn(L, 0);
+    } else if (!h || !h->body_set_flags) {
+        unavailable(L, "bond_body:set_body_flags", "not implemented yet");
+        return 0;
+    }
     int mask = 0, values = 0;
     if (lua_istable(L, 2)) {
         struct { const char *key; int bit; } k[] = { { "hitbox_cull", MHC_BF_HITBOX_CULL }, { "height_lock", MHC_BF_HEIGHT_LOCK },
-                                                     { "knockable", MHC_BF_KNOCKABLE } };
+                                                     { "knockable", MHC_BF_KNOCKABLE }, { "sorted", MHC_BF_SORTED },
+                                                     { "no_collision", MHC_BF_NO_COLLISION } };
         for (auto &e : k) {
             lua_getfield(L, 2, e.key);
             if (lua_isboolean(L, -1)) {
@@ -753,7 +761,9 @@ int b_set_body_flags(lua_State *L)
             lua_pop(L, 1);
         }
     }
-    if (mask) h_->body_set_flags(h_->ud, p, mask, values);
+    if (!mask) return 0;
+    if (p >= 0) h->body_set_flags(h->ud, p, mask, values);
+    else h->chr_set_flags(h->ud, chr, mask, values);
     return 0;
 }
 
