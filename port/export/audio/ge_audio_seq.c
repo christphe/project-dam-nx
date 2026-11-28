@@ -59,6 +59,7 @@ typedef struct {
     size_t pos;  /* current position */
     size_t rpos; /* replay window position */
     unsigned rlen; /* bytes left in the replay window */
+    int from_win;  /* the last byte returned came from a replay window */
     const char *fail;
 } byte_reader;
 
@@ -74,6 +75,7 @@ static int rd_byte(byte_reader *r)
                 return -1;
             }
             r->rlen--;
+            r->from_win = 1;
             return r->buf[r->rpos++];
         }
         if (r->pos >= r->size) {
@@ -81,6 +83,7 @@ static int rd_byte(byte_reader *r)
             return -1;
         }
         p0 = r->pos;
+        r->from_win = 0;
         b = r->buf[r->pos++];
         if (b != 0xFE)
             return (int)b;
@@ -126,19 +129,34 @@ static int rd_vlq(byte_reader *r, uint32_t *out)
 }
 
 /* ---- one sequence track -> events ------------------------------------------ */
-static int parse_track(const uint8_t *seq, size_t size, uint32_t start, ge_ae_music_stats *st, evvec *ev,
+#define SEQ_MAX_LOOP_STARTS 256
+
+static void add_warning(ge_ae_music_stats *st, const char *fmt, int track, unsigned tick)
+{
+    size_t o = strlen(st->warning);
+    if (o + 3 < sizeof st->warning)
+        snprintf(st->warning + o, sizeof st->warning - o, fmt, track, tick);
+}
+
+/* Loop starts are remembered by the raw position just after their 2 bytes (spec: "Loops"): a loop end resolves to the
+ * loop start at (position after its 6 bytes) - B, and its marker names that start's id (its index among the track's loop
+ * starts). A loop end that resolves to none is dropped and counted. */
+static int parse_track(const uint8_t *seq, size_t size, uint32_t start, int trk, ge_ae_music_stats *st, evvec *ev,
                        uint32_t *end_tick, char *err)
 {
     byte_reader r;
     uint32_t tick = 0;
     int running = -1;
     uint32_t nev = 0;
+    size_t lpos[SEQ_MAX_LOOP_STARTS];
+    int nloop = 0;
 
     r.buf = seq;
     r.size = size;
     r.pos = start;
     r.rpos = 0;
     r.rlen = 0;
+    r.from_win = 0;
     r.fail = "";
 
     for (;;) {
@@ -185,22 +203,50 @@ static int parse_track(const uint8_t *seq, size_t size, uint32_t start, ge_ae_mu
                 for (i = 0; i < 2; i++)
                     if ((x[i] = rd_byte(&r)) < 0)
                         goto fail;
+                if (r.from_win || r.rlen)
+                    add_warning(st, " t%d: loop start inside a back-reference window at tick %u;", trk, (unsigned)tick);
+                if (nloop >= SEQ_MAX_LOOP_STARTS) {
+                    ge_seterr(err, "more than %d loop starts in one track", SEQ_MAX_LOOP_STARTS);
+                    return -1;
+                }
+                lpos[nloop] = r.pos;
                 if (!st->loop_starts)
                     st->loop_start_tick = tick;
                 st->loop_starts++;
-                if (ev_push(ev, tick, K_LOOP_START, 0, 0, 0, 0))
+                if (ev_push(ev, tick, K_LOOP_START, 0, 0, 0, (uint32_t)nloop))
                     goto oom;
+                nloop++;
                 break;
-            case 0x2D:
+            case 0x2D: {
+                /* 6 raw bytes from the current position, not through the byte reader */
+                uint32_t dist;
+                int id = -1, k;
+                if (r.rlen)
+                    add_warning(st, " t%d: loop end inside a back-reference window at tick %u;", trk, (unsigned)tick);
+                if (r.size - r.pos < 6) {
+                    r.fail = "truncated loop end";
+                    goto fail;
+                }
                 for (i = 0; i < 6; i++)
-                    if ((x[i] = rd_byte(&r)) < 0)
-                        goto fail;
+                    x[i] = r.buf[r.pos + (size_t)i];
+                r.pos += 6;
+                dist = ((uint32_t)x[2] << 24) | ((uint32_t)x[3] << 16) | ((uint32_t)x[4] << 8) | (uint32_t)x[5];
+                if (dist <= r.pos)
+                    for (k = 0; k < nloop; k++)
+                        if (lpos[k] == r.pos - dist)
+                            id = k;
+                if (id < 0) {
+                    st->dead_loop_ends[trk]++;
+                    break;
+                }
                 if (!st->loop_ends)
                     st->loop_end_tick = tick;
                 st->loop_ends++;
-                if (ev_push(ev, tick, K_LOOP_END, 0, 0, 0, 0))
+                /* d1: the current-count byte (0xFF = forever), val: the loop start id */
+                if (ev_push(ev, tick, K_LOOP_END, 0, (uint8_t)x[1], 0, (uint32_t)id))
                     goto oom;
                 break;
+            }
             default:
                 /* The length of an unknown meta is unknowable: report it and
                  * end the track here. */
@@ -455,14 +501,23 @@ static int write_mtrk(ge_ae_buf *out, evvec *ev, uint32_t end_tick, uint32_t *le
                 ge_buf_u8(out, e->val >> 8) || ge_buf_u8(out, e->val))
                 return -1;
             break;
-        case K_LOOP_START:
-            if (put_marker(out, "loopStart"))
+        case K_LOOP_START: {
+            char txt[32];
+            snprintf(txt, sizeof txt, "loopStart %u", (unsigned)e->val);
+            if (put_marker(out, txt))
                 return -1;
             break;
-        case K_LOOP_END:
-            if (put_marker(out, "loopEnd"))
+        }
+        case K_LOOP_END: {
+            char txt[40];
+            if (e->d1 == 0xFF)
+                snprintf(txt, sizeof txt, "loopEnd %u inf", (unsigned)e->val);
+            else
+                snprintf(txt, sizeof txt, "loopEnd %u %u", (unsigned)e->val, (unsigned)e->d1);
+            if (put_marker(out, txt))
                 return -1;
             break;
+        }
         }
     }
     if (put_vlq(out, end_tick - last) || ge_buf_u8(out, 0xFF) || ge_buf_u8(out, 0x2F) || ge_buf_u8(out, 0))
@@ -583,7 +638,8 @@ int ge_ae_music_convert(const uint8_t *rom, size_t size, const ge_ae_layout *lay
     for (i = 0; i < SEQ_MAX_TRACKS; i++) {
         if (!offsets[i])
             continue;
-        if (parse_track(seq, usize, offsets[i], st, &ev[i], &end_tick[i], err)) {
+        uint32_t cut0 = st->overlaps_cut;
+        if (parse_track(seq, usize, offsets[i], i, st, &ev[i], &end_tick[i], err)) {
             char tmp[GE_AE_ERRLEN];
             snprintf(tmp, sizeof tmp, "sequence track %d: %s", i, err);
             memcpy(err, tmp, GE_AE_ERRLEN);
@@ -593,6 +649,7 @@ int ge_ae_music_convert(const uint8_t *rom, size_t size, const ge_ae_layout *lay
             ge_seterr(err, "out of memory");
             goto done;
         }
+        st->overlaps_track[i] = st->overlaps_cut - cut0;
     }
 
     /* SMF header + one MTrk per present sequence track */

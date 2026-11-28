@@ -60,6 +60,8 @@ typedef struct {
     uint32_t channel_mask;  /* bit n = channel n carries events */
     uint32_t ends_changed[16]; /* notes whose real end differs from tick + duration, per channel */
     uint32_t overlaps_cut;     /* notes cut just before the next same channel+key note-on */
+    uint32_t overlaps_track[16];   /* overlaps_cut per sequence track */
+    uint32_t dead_loop_ends[16];   /* loop ends per sequence track that resolve to no loop start (dropped) */
     uint32_t length_ticks;  /* last event tick, including note-offs */
     uint32_t first_tempo_us;/* 0 if no tempo event */
     uint32_t loop_start_tick, loop_end_tick; /* first marker of each kind */
