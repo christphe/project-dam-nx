@@ -39,7 +39,7 @@ environment variables override the file.
 | `SWITCH_IP` | `nx`: the console's address on the local network |
 | `SWITCH_EMU_EXE` | `switch`: the Switch emulator |
 | `SWITCH_EMU_SD` | `switch`: its virtual SD card (default `%APPDATA%/Ryujinx/sdcard`) |
-| `N64_EMU_EXE`, `N64_ROM` | `n64`; `N64_ROM` also seeds the native builds' `data/` and is the ROM every tool reads |
+| `N64_EMU_EXE`, `N64_ROM_US` (`N64_ROM_JP`, `N64_ROM_PAL` reserved; `N64_ROM` still read) | `n64`; `N64_ROM_US` also seeds the native builds' `data/` and is the ROM every tool reads |
 | `SEAVIEW_GXX` | `tools`: the Windows g++ the viewers build with (default: MSYS2's `C:\msys64\mingw64in\g++.exe`) |
 | `DOCKER_IMAGE` | builds (default: the published, digest-pinned `ghcr.io/christphe/project-dam-build`, pulled on first use; `local/project-dam-build:latest` after `docker compose build image-local`) |
 
@@ -65,11 +65,13 @@ Every run command takes:
 - `--level L`: boot straight into a solo level, by number or by name (`dam`, `facility`,
   `runway`, … `cuba`; `-h` lists them). Becomes `-level_NN`.
 - `--hard N`: difficulty 0..3 (`-hardN`).
-- `ARGS...`: any other game argument, and `NAME=value` tokens that become environment
-  variables (`GE_COOP=1 GE_PADS=2`, `GE_MENUGOTO=1,2`, `GE_QUITFRAME=300`…). On the Switch the
-  game turns them into variables itself, and only the `args` and `link` builds do (the plain
-  `switch` build ignores them). `win` and `linux` set them in the game's environment (through
-  `WSLENV` for `linux` on Windows); the PC game never reads them from its command line.
+- `--env NAME=value` (repeatable): an environment variable for the game (`--env GE_COOP=1 --env GE_PADS=2`,
+  `--env GE_QUITFRAME=300`…). `win` and `linux` set it in the game's environment (through `WSLENV` for `linux`
+  on Windows). On the Switch the game reads them as `NAME=value` tokens, which `nx` and `switch` write for you;
+  only the `args` and `link` builds do that (the plain `switch` build ignores them).
+- `-- ARGS...`: everything after `--` goes to the game as it is (`-- -level_09`). An unknown option before
+  `--` is an error.
+
 
 ## Commands
 
@@ -93,8 +95,10 @@ it keeps a `.args.bak` of the one already there) and starts the emulator. The ga
 `switch/project-dam/data/ge007.log` on that SD card.
 
 **`win` / `linux`** run the native build (`--build` rebuilds it first). The first run in a new
-worktree creates `data/` next to the executable and copies the ROM into it (from `N64_ROM`, or
-the one the Switch emulator already has). It reports a game that exits within three seconds
+worktree creates `data/` next to the executable and copies the ROM into it (from `N64_ROM_US`, or
+the one the Switch emulator already has). Every run also copies `campaign/` to `mods/campaign.pmod/` next to the
+executable, as a folder (a `.pmod` may be a plain directory); `--no-campaign` skips it. `--env NAME=value` (repeatable) sets an environment variable of the game; everything after `--` goes to the game
+as it is: `dev.py win --env GE_QUITFRAME=60 -- -level_09`. It reports a game that exits within three seconds
 instead of failing silently. `linux` on Windows runs through WSL.
 
 **`editor`** runs the mission editor of the Windows build (`build-win/project-dam-editor.exe`)
@@ -127,7 +131,7 @@ already converted, to copy into their per-run work dir.
 
 ```sh
 python tools/dev.py nx --level facility                    # console, Facility, log in build-switch-link/nx.log
-python tools/dev.py nx --name coop GE_COOP=1 GE_PADS=2     # co-op test build, named coop-test.nro
+python tools/dev.py nx --name coop --env GE_COOP=1 --env GE_PADS=2     # co-op test build, named coop-test.nro
 python tools/dev.py switch --level dam --hard 3            # emulator, Dam on 00 Agent
 python tools/dev.py switch --build none GE_MENUGOTO=2,0    # emulator, last build, menu open on Input
 python tools/dev.py win --build                            # rebuild and run the Windows build
