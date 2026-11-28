@@ -271,6 +271,10 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 #define TSF_RENDER_SHORTBUFFERBLOCK 512
 #endif
 
+// Port addition: define TSF_LINEAR_AMP_ENVELOPE before including this file with TSF_IMPLEMENTATION to make the amplitude
+// envelope's decay and release straight lines in output amplitude (the N64 synth's shape, docs/specs/audio.md) instead of
+// exponential. Off by default; only port/src/musicpack.c turns it on.
+
 // Grace release time for quick voice off (avoid clicking noise)
 #define TSF_FASTRELEASETIME 0.01f
 
@@ -1051,10 +1055,23 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			/* fall through */
 		case TSF_SEGMENT_HOLD:
 			e->samplesUntilNextSegment = (int)(e->parameters.decay * outSampleRate);
+			#ifdef TSF_LINEAR_AMP_ENVELOPE
+			// Linear mode: the amplitude envelope's decay is a straight line in output amplitude from the peak (1.0) to the
+			// sustain level, and "decay" is the time that line takes (not the SF2 "time to fall 60 dB").
+			if (e->isAmpEnv && e->parameters.sustain >= 1.0f) e->samplesUntilNextSegment = 0;
+			#endif
 			if (e->samplesUntilNextSegment > 0)
 			{
 				e->segment = TSF_SEGMENT_DECAY;
 				e->level = 1.0f;
+				#ifdef TSF_LINEAR_AMP_ENVELOPE
+				if (e->isAmpEnv)
+				{
+					e->slope = -(1.0f - e->parameters.sustain) / e->samplesUntilNextSegment;
+					e->segmentIsExponential = TSF_FALSE;
+				}
+				else
+				#endif
 				if (e->isAmpEnv)
 				{
 					// I don't truly understand this; just following what LinuxSampler does.
@@ -1090,6 +1107,15 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 		case TSF_SEGMENT_SUSTAIN:
 			e->segment = TSF_SEGMENT_RELEASE;
 			e->samplesUntilNextSegment = tsf_voice_envelope_release_samples(e, outSampleRate);
+			#ifdef TSF_LINEAR_AMP_ENVELOPE
+			if (e->isAmpEnv)
+			{
+				// Linear mode: a straight line in amplitude from where the voice is to 0 over the whole release time.
+				e->slope = -e->level / e->samplesUntilNextSegment;
+				e->segmentIsExponential = TSF_FALSE;
+			}
+			else
+			#endif
 			if (e->isAmpEnv)
 			{
 				// I don't truly understand this; just following what LinuxSampler does.
@@ -1217,6 +1243,18 @@ static void tsf_voice_calcpitchratio(struct tsf_voice* v, float pitchShift, floa
 	v->pitchOutputFactor = v->region->sample_rate / (tsf_timecents2Secsd(v->region->pitch_keycenter * 100.0) * outSampleRate);
 }
 
+
+// Port addition: TSF_CUBIC_INTERP replaces the linear interpolation of the sample reader with a 4-point Catmull-Rom
+// cubic (the N64 mixer reads samples through a 4-tap interpolator). Off by default.
+#ifdef TSF_CUBIC_INTERP
+#define TSF_INTERP(in, pos, nxt, a) tsf_cubic4((pos) ? (in)[(pos) - 1] : (in)[pos], (in)[pos], (in)[nxt], (in)[(nxt) + 1], (a))
+static float tsf_cubic4(float y0, float y1, float y2, float y3, float a)
+{
+	return y1 + 0.5f * a * (y2 - y0 + a * (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3 + a * (3.0f * (y1 - y2) + y3 - y0)));
+}
+#else
+#define TSF_INTERP(in, pos, nxt, a) ((in)[pos] * (1.0f - (a)) + (in)[nxt] * (a))
+#endif
 static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, int numSamples)
 {
 	struct tsf_region* region = v->region;
@@ -1292,7 +1330,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = TSF_INTERP(input, pos, nextPos, alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1313,7 +1351,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = TSF_INTERP(input, pos, nextPos, alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1333,7 +1371,7 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = TSF_INTERP(input, pos, nextPos, alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);

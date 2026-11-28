@@ -420,6 +420,325 @@ on closing the watch slot 1 fades in over 0.5 s to `M` and slot 2 fades out.
 - Events take effect on 16-sample boundaries of the output (0.73 ms).
 - A tempo event from any track sets the tempo of the whole sequence.
 
+## Synth model (what the sequence player's synthesizer does to a note)
+
+Facts for making a SoundFont/MIDI synth sound like the game's. Everything is
+**read from the code** (the sequence player, the synthesizer driver, the
+envelope/mixer driver, the effect driver and the music start-up) unless a line
+says **measured** or **UNSURE**. US/NTSC; I saw no region conditionals in
+these paths (output rate 22050 Hz in every build). The RSP audio microcode
+itself is not in the tree: the arithmetic of the mixer opcodes (gain = signed
+16-bit, 0x7FFF = unity, `out = in x gain >> 15`, results clamped to signed
+16-bit) is taken from the port's re-implementation of those opcodes, which
+was written to match it. Nothing here is code; formulas are the arithmetic
+the game performs.
+
+Notation: `E(i)`, i = 0..127, is the **equal-power table**: `E(i) = 32767 x
+cos(i x pi / 254)` (within 1 count of the floor of that; `E(0)` = 32767,
+`E(64)` = 23026, `E(63)` = 23313, `E(127)` = 0). Divide by 32768 to get a
+gain. "Time to samples" = `trunc(microseconds x 22050 / 1e6 + 0.5)`, then
+rounded **down to a multiple of 16**: any segment shorter than about 0.73 ms
+has length 0, and lengths are quantized to 0.726 ms steps.
+
+### Voice level: the exact product (confidence: high)
+
+For every sounding note the player computes one 16-bit **voice level** `V`
+(integer arithmetic, truncating at each `>>`):
+
+1. `A = (127 x velocity x env) >> 6`: `velocity` is the note velocity 0..127;
+   127 is the constant "tremolo" factor (never changes, see below); `env` is
+   the envelope's **current target** 0..127 (the sound's attack volume, then
+   its decay volume, then 0 once the note has ended).
+2. `B = (sample_volume x P x CC7) >> 14`: `sample_volume` is the sound's
+   volume byte 0..127, `P` the slot's player volume 0..32767 (Volume chain
+   above), `CC7` the channel volume 0..127.
+3. `V = (A x B) >> 15`. With every factor at maximum, `V` = 31507 (0.9615 of
+   32768).
+
+The mixer then **squares** it: `L = (V x V) >> 15`, the voice's loudness
+level, 0..32767 (maximum 30293 = 0.9245). So a voice's output amplitude,
+relative to the full scale of its decoded sample, is
+
+`0.9245 x (velocity/127)^2 x (env/127)^2 x (sample_volume/127)^2 x
+(CC7/127)^2 x (P/32767)^2`, times the pan and dry/wet gains below.
+
+In dB every factor contributes `40 x log10(x / x_max)` (not 20): velocity 64
+is -11.9 dB, CC7 64 is -11.9 dB, P at half is -12 dB. The intermediate
+truncations cost at most about 1 part in 1000; ignore them.
+
+- The **instrument's own defaults** come from the bank's instrument record:
+  the volume byte (offset 0) becomes the channel's CC7 on a program change;
+  the pan byte (offset 1; 64 = centre) becomes CC10; priority byte (offset
+  2); bend range (s16, offset 12, cents). `sample_volume` and the sound's own
+  pan (centre 64) are in the sound record.
+- **Channel pan and sound pan add:** `pan = clamp(CC10 + sound_pan - 64, 0,
+  127)`.
+- **Exporter consequence.** A SoundFont whose per-sound attenuation uses the
+  unsquared ratio is wrong by the square. The sound's level relative to the
+  full-scale case is `40 x log10(sample_volume/127)` dB (SoundFont
+  attenuation in centibels: `-400 x log10(ratio)`); the attack peak is
+  `40 x log10(attack volume/127)` dB; the **sustain level relative to the
+  attack peak** is `40 x log10(decay volume / attack volume)` dB (amplitude
+  ratio `(decay/attack)^2`). Velocity and CC7 must follow the same square law
+  at playback (the SoundFont 2.01 default concave velocity and CC7 curves are
+  this `40 x log10(x/127)` dB law; whether a given synth really applies them
+  is for the implementer to check, not assumed here).
+
+### Envelope shape (confidence: high for the shape, UNSURE for which instruments)
+
+Stored per sound: attack time, decay time, release time (signed 32-bit
+microseconds), attack volume, decay volume (0..127); see Bank file.
+
+- Every segment is a **straight line in the mixer's loudness level `L`**
+  (before the pan gain, which is a constant factor), i.e. **linear in output
+  amplitude, not in dB**. Each segment goes from the voice's current `L` to
+  the target `L = (V^2) >> 15` computed with the segment's `env`. Because `L`
+  is the square of `V`, the amplitude is a straight interpolation between the
+  *squared* end levels, not the square of a straight interpolation.
+- **Attack.** If the attack time converts to 0 samples the voice starts at its
+  target. Otherwise it starts from (almost) 0 and rises linearly to the level
+  with `env` = attack volume over the attack time.
+- **Decay.** When the attack ends the target changes to the level with `env`
+  = decay volume, reached in a straight line over the decay time; the voice
+  then **holds** there while the note is held. A decay time converting to 0
+  samples (including the stored value -1, "held until stopped" in the SFX
+  bank) means the level **steps** to the decay volume at the end of the
+  attack. Decay volume equal to attack volume: nothing happens.
+  **Which instruments have a finite decay** (decay time long enough to matter
+  and decay volume below attack volume): the issue's measurement says 14 of
+  the bank's instruments (23 % of the notes). Not re-measured here (no ROM in
+  this session): UNSURE which; the exporter can list them by the rule above.
+- **Release.** At the note's end the target becomes 0 and the level falls
+  **linearly in `L`** from wherever it is to 0 over the full release time
+  (whatever the starting level), then the voice is freed. A note that ends
+  **during its attack** skips the decay (the pending decay is cancelled) and
+  releases from the level it has reached; one ending during the decay releases
+  from the current decay level. Note-end times come from the sequence
+  (Which note a note-off ends); a stop uses the 50 ms release (Stop above).
+- **A change of CC7, of the slot volume `P`, or aftertouch on a held note**
+  sets a new target: the level moves in a straight line to it over the **rest
+  of the current attack/decay segment** if one is running, otherwise over
+  **1 ms** (22 samples, quantized to 16 = 0.7 ms): practically a step on a
+  sustaining note. Notes already in release ignore CC7.
+- **CC10 (pan)** changes reach sounding notes at once (the left/right levels
+  ramp over about the length of the voice's last envelope segment, about 1 ms
+  on a sustaining note; during a long segment the ramp is slower, low
+  confidence, inaudible in practice).
+- **Sustain pedal (CC64 > 63)** is honoured by the player (a note end while
+  the pedal is down is deferred until it lifts). Whether a sequence uses it
+  was not checked.
+
+### Pan law (confidence: high)
+
+Left gain `E(pan) / 32768 = cos(pan x pi/254)`, right gain `E(127 - pan) /
+32768 = sin(pan x pi/254)`, `pan` 0..127: a constant-power cosine/sine law over
+127 steps. Pan 64: left 0.7027, right 0.7115 (each about -3.0 dB); pan 0 left
+only at gain 1.0; pan 127 right only. It multiplies `L`, so each side carries
+the square laws too.
+
+### The effect (reverb) bus (confidence: structure high; low-pass details medium)
+
+**One** effect bus exists in the whole synthesizer. All three music slots
+**and the sound-effect player share it** (one synthesizer with 24 physical
+voices and one bus). Its input is the voices' wet sends; its output is added
+to the main mix.
+
+**CC91 (per-voice effect send).** The channel's CC91 value `s` (0..127) is
+turned into two gains per voice:
+
+- `dry = E(s) / 32768 = cos(s x pi/254)`
+- `wet = E(127 - s) / 32768 = sin(s x pi/254)`
+
+| `s` | dry | wet |
+|---|---|---|
+| 0 | 1.0 (32767) | 0 (no reverb) |
+| 64 | 0.7027 | 0.7115 |
+| 127 | 0 (no dry signal at all) | 1.0 |
+
+CC91 starts at 0 on every channel at the start of a sequence; a program change
+does not touch it. A CC91 change reaches notes already sounding (a step, not a
+ramp); a new note takes the channel's current value. The sound-effect player
+uses the same mapping with `s = min(127, 8 x (effect state value + the
+effect's 4-bit send))`.
+
+**Where the split happens.** Per voice, the signal is multiplied by `L` and
+the pan gains (`gl`, `gr`), then `main_left += signal x gl x dry`, `main_right
++= signal x gr x dry`, `aux_left += signal x gl x wet`, `aux_right += signal
+x gr x wet`. So the **wet send is panned**, and the whole volume chain
+(including `P` squared) sits in front of the dry/wet split.
+
+**Bus input.** Per sample, `x = aux_left x 0.70713 + aux_right x 0.70709`
+(the left channel is mixed with itself at gain -0.29287, i.e. scaled by
+0.70713; the right is added at 0x5A82/32768 = 0.70709), i.e. `x =
+0.7071 x (aux_left + aux_right)`. A centred voice (`gl + gr` = 1.414) reaches
+the bus at gain 1.0 x `L` x wet; a hard-panned one at 0.7071.
+
+**Structure.** One circular delay line of **6400 samples** (290.2 ms at 22050
+Hz), initially zero and never cleared (it keeps ringing across track changes
+and slot stops). Each step the new input sample `x` is written at the line's
+newest position ("delay 0"). Six sections then act **in place on the line**,
+in the order 1..6, each once per sample. A section has two tap delays, `a`
+(shallow) and `b` (deep), a coefficient `g` (feed-back `+g`, feed-forward
+`-g`, as signed 16-bit over 32768), an output gain `og` and an optional
+one-pole low-pass. Let `u` be the line's sample at delay `a` and `v` the
+sample at delay `b` (delay counted from the sample written this step):
+
+1. `v1 = v - g x u`
+2. `u1 = u + g x v1`; **store `u1` back at delay `a`**.
+3. `v2 = lowpass(v1)` if the section has a low-pass, else `v2 = v1`.
+4. **Store `v2` at delay `b`** (not for section 6).
+5. Add `og x v2` into the bus output.
+
+This is a Schroeder all-pass (`y[n] = -g x[n] + x[n-D] + g y[n-D]`, `D = b -
+a`) whose delay memory is the shared line; each section reads what earlier
+sections have just stored. The smallest `b - a` is 160 samples and the game
+works in blocks of at most 160, so sample-by-sample processing in the order
+above is equivalent to the game's block processing.
+
+| # | a (samples) | b (samples) | g | og | low-pass `c` | notes |
+|---|---|---|---|---|---|---|
+| 1 | 0 | 160 (7.26 ms) | 0.3000 (9830) | 0 | none | |
+| 2 | 160 | 320 (14.5 ms) | 0.3000 (9830) | 0.3400 (0x2B84 = 11140) | 0.2891 (0x2500) | reads what section 1 stored at 160 |
+| 3 | 800 (36.3 ms) | 2560 (116.1 ms) | 0.5000 (16384) | 0.1400 (0x11EB = 4587) | 0.3750 (0x3000) | |
+| 4 | 3200 (145.1 ms) | 5600 (254.0 ms) | 0.5000 (16384) | 0.1400 (0x11EB) | 0.4141 (0x3500) | its span contains section 5's |
+| 5 | 3360 (152.4 ms) | 4800 (217.7 ms) | 0.2500 (8192) | 0 | 0.5000 (0x4000) | no output, only reshapes the line |
+| 6 | 0 | 5920 (268.5 ms) | 0.3967 (13000) | 0 | (unused) | chorus section, below |
+
+The delays are exact sample counts (the source writes them as multiples of
+"ms" that stand for 40 samples; "160 ms" is the 6400-sample line); at another
+output rate scale them by `rate / 22050`.
+
+**Only sections 2, 3 and 4 produce output:** bus output = `0.34 x v2(section
+2) + 0.14 x v2(section 3) + 0.14 x v2(section 4)`. Sections 1, 5 and 6 only
+rewrite the line (they make the tail dense). There is a zero-latency path:
+section 2's `v1` contains `g1 x g2 x x` at the same instant (about 0.09 of
+the input before the low-pass and the 0.34), so a CC91 = 127 note is not
+silent at its onset; then echoes follow.
+
+**Section 6 (the chorus section).** It reads `u` at delay 0 **after section 1
+has rewritten it**, and `v` at about delay 5920; computes `v1 = v - g x u`,
+then `u1 = u + g x v1` stored at delay 0; it stores nothing at delay 5920,
+and its low-pass and output gain are unused. Net effect: one feed-back of the
+oldest part of the line (268.5 ms back, gain 0.397) into the input of the
+chain. Its modulation moves the delay-5920 read by a triangle of period 5.26 s
+(rate 0x17C, depth 0xA) with amplitude about 0.34 samples of tap modulation,
+accumulating to a slow drift of at most a few samples: **inaudible; an
+implementer should use a fixed tap at 5920** (confidence: medium, the
+modulation was not traced to the last sample).
+
+**Low-pass** (sections 2, 3, 4, 5: applied to `v1` to make the stored and
+output `v2`; the feed-back `u1` uses the unfiltered `v1`). A one-pole filter
+with `c = coef / 32768` (table's last column) and unity gain at DC: `y[n] =
+(1 - c) x v1[n] + c x y[n-1]`, state kept per section across steps. Corner
+frequencies at 22050 Hz: c 0.289 about 4.3 kHz, 0.375 about 3.4 kHz, 0.414
+about 3.0 kHz, 0.5 about 2.4 kHz. Confidence medium: read from how the
+coefficients are derived (gain `16384 - coef/2` on a 14-bit scale, state
+vector of powers of `c`); the microcode running it is not in the tree and the
+port's version of it is a no-op.
+
+**Output.** The bus output (same mono signal) is copied to left and right
+and **added to the main mix at unity** (gain 0x7FFF each). It is not panned
+and there is no other master gain. The main mix is the sum of all dry voices
+plus this, clamped to signed 16-bit at every addition (loud passages clip
+hard, which a float synth need not copy).
+
+**Mix point relative to slot volume.** `P` is inside every voice's level, so
+dry and wet both scale with `P^2`; the return has no volume control of its
+own. The line's contents decay on their own: after a slot is stopped or faded
+to 0 the tail plays out (roughly 0.3 s, with the section-6 feed-back about 0.4
+s to inaudible; UNSURE).
+
+### Channel state, program change, pitch bend (confidence: high)
+
+- **At the start of every sequence** (and when the bank is set) all 16
+  channels are initialised: CC91 = 0, sustain pedal up, bend range 200 cents,
+  no bend, priority 5; then pan, volume, priority and bend range are taken
+  from the bank's **first instrument (instrument 0)**.
+- **Program change** to instrument `n` (ignored if `n` is not in the bank)
+  sets on that channel: **CC7 = the instrument's volume byte**, **CC10 = the
+  instrument's pan byte**, **priority = its priority byte**, **bend range =
+  its bend range**. It does **not** touch CC91, the sustain pedal or the
+  current bend (the current bend *ratio* stays as it was until the next bend
+  event, which then uses the new range), and does not change notes already
+  sounding. So the exporter must emit CC7, CC10 and the bend range (RPN 0)
+  right after each program change from the instrument's own values; later
+  CC7 / CC10 events overwrite them as usual.
+- **Bend range** is per instrument, bank instrument offset 12, signed 16-bit
+  **cents**; 200 for a channel until a program change says otherwise. The issue
+  names instruments **71 and 73** with 1200 (one octave); **UNSURE: taken from
+  the issue, not re-measured here**. The exporter should read the field for
+  every instrument and report any value other than 200. An RPN 0 data entry of
+  `range / 100` semitones reproduces it in a MIDI file.
+- **Bend wheel mapping:** 14-bit `w = (msb << 7) + lsb`, midpoint 8192 = no
+  bend: `cents = trunc(range x (w - 8192) / 8192)` (integer division
+  truncating toward zero; the top is 8191/8192 of the range, the bottom exactly
+  -range), ratio `2^(cents/1200)`, applied to sounding notes at once and to
+  later notes of the channel; no smoothing.
+- **Not run in GE (confirmed): bank vibrato and tremolo.** The instrument
+  records have the fields, but the player's oscillator callbacks are never
+  installed by the music set-up, so they are ignored; the "tremolo" factor in
+  the level product is the constant 127. Pitch is key + detune + bend only. (The
+  resampler also clamps the ratio at just under 2.0 x the bank rate; a
+  SoundFont synth need not copy this.)
+
+### Voices (confidence: high)
+
+- Each music slot's player has **16 voices**; a note-on with none free is
+  dropped. The synthesizer has **24 physical voices** shared by the three
+  slots and the sound-effect player.
+- **Stealing**, when no physical voice is free: among voices not already
+  stolen pick the one with the lowest priority that is **at most** the new
+  note's (ties: the most recently allocated of the lowest wins; voices in
+  release have priority 0 and go first); if none qualifies the new note is
+  silent. The stolen voice is ramped to silence over about 20 ms and the new
+  note starts about 23 ms (512 samples) after.
+- A channel's priority is the instrument's, changed by CC16.
+
+### Resampler (confidence: medium, from the port's reimplementation)
+
+A 4-tap polyphase interpolator with 64 phases: the top 6 bits of the 16-bit
+fractional position pick one of 64 four-tap coefficient sets (no blending
+between phases); the pitch ratio is in 1/32768 steps, maximum just under 2.0.
+Quality of a decent cubic; the point for an implementer is that it is not
+linear interpolation.
+
+### Check list for the implementer (what a capture can confirm)
+
+With `GE_AUDIODUMP` and `GE_ROM_MUSIC=1` (docs/wiki/testing-on-switch.md):
+
+1. **Reverb echo lags.** One isolated note with CC91 = 127: a weak onset, then
+   repeating structure at spacings of 160 samples (7.26 ms, sections 1 and 2),
+   1440 (65.3 ms, section 5's span), 1760 (79.8 ms, section 3), 2400 (108.8
+   ms, section 4) and the feed-back repeat at about 5920 (268.5 ms); no energy
+   beyond a few thousand samples past 6400. The autocorrelation of the wet part
+   should show those lags.
+2. **Dry/wet balance:** one note at CC91 0, 64, 127: dry ratio 1 : 0.7027 : 0,
+   wet send 0 : 0.7115 : 1.0.
+3. **Level law:** a note's peak against velocity (`(v/127)^2`), CC7
+   (`(c/127)^2`), slot volume `P` (squared), and the absolute case: 0.9245 of
+   the sample's own peak at pan hard left or right, 0.65 per channel at
+   centre (0.9245 x 0.7027).
+4. **Envelope:** decay and release of a plucked instrument are straight lines
+   on a linear-amplitude plot.
+5. **Pan:** a centred voice has 0.7027 / 0.7115 left/right.
+6. **Bend:** track 53 (the issue's example) peaks at +-1200 cents.
+7. **Low-pass corners** (the weakest numbers): the tail's spectral tilt
+   against 2.4 to 4.3 kHz one-pole corners.
+
+### Confidence and open items for this part
+
+- Reverb structure, coefficients, delay lengths, dry/wet curves, volume
+  product, squaring, pan law, program-change resets, bend maths, stealing:
+  read from the code, high confidence.
+- Absolute level of the reverb return relative to the dry signal depends on
+  the microcode's scaling in the envelope mixer (assumed: volume x dry/wet
+  >> 15, then signal x gain >> 15, as the port's reimplementation does):
+  medium. Calibrate the total wet gain against a capture.
+- Low-pass exact form: medium. Section 6 modulation ignored: medium.
+- Bend 1200 on instruments 71 and 73, and the 14 finite-decay instruments:
+  from the issue, not re-measured: UNSURE.
+- CC10 ramp speed during long envelope segments: low (inaudible).
+
 ## Bank file ("ctl") and samples ("tbl")
 
 Every pointer inside a ctl file is a 32-bit offset **from the start of the

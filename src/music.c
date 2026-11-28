@@ -848,6 +848,7 @@ void musicSeqPlayerInit(void)
 void musicTrack1Play(s32 track)
 {
 #ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkMusicOnly(0, &track)) return;
     if (mpkActive()) { mpkPlay(0, track); return; }
     mpkLogRequest("play", 0, track, 0);
 #endif
@@ -1073,6 +1074,7 @@ void musicTrack1FadeIn(f32 fadeTime, u16 volume)
 void musicTrack2Play(s32 track)
 {
 #ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkMusicOnly(1, &track)) return;
     if (mpkActive()) { mpkPlay(1, track); return; }
     mpkLogRequest("play", 1, track, 0);
 #endif
@@ -1297,6 +1299,7 @@ void musicTrack2FadeIn(f32 fadeTime, u16 volume)
 void musicTrack3Play(s32 track)
 {
 #ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkMusicOnly(2, &track)) return;
     if (mpkActive()) { mpkPlay(2, track); return; }
     mpkLogRequest("play", 2, track, 0);
 #endif
