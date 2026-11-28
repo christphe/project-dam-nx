@@ -96,6 +96,14 @@ static int  cCreditsShow(void *u, const MissionCredits *c)
     return 1;
 }
 static void cCreditsStop(void *u) { callf(u, "credits_stop"); }
+static int  cCreditsRows(void *u, unsigned short *ids, int max)
+{
+    static const unsigned short rows[] = { 0x5010, 0x5011, 0x5011, 0x5011, 0x5012, 0x5013 };
+    int n = 3 < max ? 3 : max;
+    (void)u;
+    memcpy(ids, rows, (size_t)n * 2 * sizeof rows[0]);
+    return n;
+}
 static int  cTeleport(void *u, int p, int pad) { callf(u, "teleport(%d,%d)", p, pad); return pad == 700 ? 0 : 1; }
 static int  cAnim(void *u, int p, const char *name, int id, const MissionCinemaAnim *o)
 {
@@ -131,7 +139,7 @@ static MissionHostCinema cinemaHost(Fake *f)
     c.camera_fixed = cFixed; c.camera_orbit = cOrbit; c.camera_reset = cCamReset;
     c.camera_set = cSet; c.camera_move = cMove; c.camera_moving = cMoving; c.camera_stop = cStop;
     c.fade = cFade; c.fading = cFading; c.credits_roll = cCreditsRoll; c.credits_done = cCreditsDone;
-    c.credits_show = cCreditsShow; c.credits_stop = cCreditsStop;
+    c.credits_show = cCreditsShow; c.credits_stop = cCreditsStop; c.credits_rows = cCreditsRows;
     c.body_teleport = cTeleport; c.body_anim = cAnim; c.body_anim_done = cAnimDone; c.body_hold_item = cHold;
     c.body_show = cShow; c.body_fade = cBodyFade; c.body_remove = cBodyRemove; c.body_set_shadow = cShadow; c.set_frozen = cFrozen; c.hide_weapon = cHideWeapon;
     c.in_cutscene = cInCutscene;
@@ -621,6 +629,8 @@ int main(void)
         "for i = 1, 401 do many[i] = 'line ' .. i end\n"
         "local ok6, e6 = pcall(credits.show, { lines = many })\n"
         "message('e6 ' .. tostring(e6))\n"
+        "local rows = credits.rows()\n"
+        "message('rows ' .. #rows .. ' ' .. rows[1].text1 .. ' ' .. rows[2].text2 .. ' ' .. rows[3].text2)\n"
         "credits.show({ speed = 99, lines = { 'fast' } })\n"
         "credits.stop()\n"
         "wait(event('start'))\n", &f, &h);
@@ -641,6 +651,7 @@ int main(void)
         GE_CHECK(hasMsg(&f, "e4 credits.show: style must be one of \"text\", \"heading\", \"title\", not \"huge\""));
         GE_CHECK(hasMsg(&f, "e5 credits.show: backdrop must be one of \"world\", \"black\", not \"red\""));
         GE_CHECK(hasMsg(&f, "e6 credits.show: more than 400 lines"));
+        GE_CHECK(hasMsg(&f, "rows 3 20496 20497 20499"));                          /* 0x5010, 0x5011, 0x5013 as numbers */
         GE_CHECK(called(&f, "credits_show(n=1,speed=10.0,black=0,total=1.0);"));   /* the speed is clamped */
         GE_CHECK(called(&f, "credits_stop;"));
         missionRtDestroy(rt);

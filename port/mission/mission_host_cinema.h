@@ -117,6 +117,9 @@ typedef struct MissionHostCinema {
      * credits.stop ends them; credits_done is then true. 1 when it took */
     int  (*credits_show)(void *ud, const MissionCredits *credits);
     void (*credits_stop)(void *ud);
+    /* credits.rows: the level's own credits block (the Cuba level's; 0 rows elsewhere), two text ids per row (a row with
+     * the "nothing here" id 0x5011 in a column has no text in it), up to max rows; ids has 2 * max entries */
+    int  (*credits_rows)(void *ud, unsigned short *ids, int max);
     /* bond_body(player): 1 when it took, 0 when the player has no body or the request is refused */
     int  (*body_teleport)(void *ud, int player, int pad);
     int  (*body_anim)(void *ud, int player, const char *name, int id, const MissionCinemaAnim *opts);

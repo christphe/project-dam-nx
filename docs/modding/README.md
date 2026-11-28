@@ -185,7 +185,9 @@ credits.show({
 while not credits.done() do wait(0.25) end
 ```
 
-`credits.stop()` ends them at once; `credits.done()` is true when they ended (or were stopped). Lines are measured in
+`credits.rows()` gives the level's own credits block, row by row, as two text ids (`text(id)` turns one into the text in
+the language played); only the Cuba level has one. The campaign's Cuba script builds its credits from it
+(`campaign/cuba/scripts/cuba.luau`). `credits.stop()` ends them at once; `credits.done()` is true when they ended (or were stopped). Lines are measured in
 lines of the screen, so the credits look the same at any resolution; a text longer than 95 bytes is cut, and a list holds
 400 lines at most (a longer one is a script error). The credits stand still while the game is paused. Text is yours, in
 the language you write it in: the host adds nothing.

@@ -12,6 +12,7 @@
  *   screen.fade_*       AI_ScreenFadeToBlack / AI_ScreenFadeFromBlack, AI_IFScreenFadeCompleted
  *   credits.roll / done AI_CreditsRoll / AI_IFCreditsHasCompleted
  *   credits.show / stop our own (mission_host_credits.h): the menu draws the lines over every view (menu_ui.cpp drawCredits)
+ *   credits.rows        the level's credits (the pack's levels/cuba/setup.json): their text ids, for a script to turn into credits.show lines
  *   bond_body:teleport  AI_TRYTeleportingChrToPad on CHR_BOND_CINEMA (the player's own chr)
  *   bond_body:anim      AI_PlayAnimation on that chr, anim_done AI_IFPlayingAnimation's test
  *   bond_body:hold_item AI_BondEquipItemCinema; hide_weapon AI_BondHideWeapons
@@ -37,6 +38,8 @@
 #include "game/bondview.h"
 #include "game/gun.h"
 #include "game/lv.h"
+#include "texpack.h"
+#include "ge_pkg.h"
 #include "game/player.h"
 #include "game/propobj.h"
 #include "game/stan.h"
@@ -597,6 +600,44 @@ static void hCreditsStop(void *ud)
     S.crActive = 0;
 }
 
+/* credits.rows: the Cuba credits come from the asset pack's levels/cuba/setup.json ("credits": rows of {"text1", "text2", ...},
+ * exported from the ROM's setup file, so the region's own list). The game's own pointer (credits_pointer) is not used: the
+ * converter widens the setup file without moving the credits offset, so on the PC it points at other bytes. */
+static int hCreditsRows(void *ud, unsigned short *ids, int max)
+{
+    unsigned char *file = NULL;
+    unsigned long len = 0;
+    char *text, *p, *end;
+    int n = 0;
+    (void)ud;
+    if (bossGetStageNum() != LEVELID_CUBA) return 0;
+    if (!assetRead("levels/cuba/setup.json", &file, &len, NULL) || !file) {
+        say("credits.rows: levels/cuba/setup.json is in no asset pack");
+        return 0;
+    }
+    text = (char *)malloc((size_t)len + 1);
+    if (!text) { pkgFree(file); return 0; }
+    memcpy(text, file, len);
+    text[len] = '\0';
+    pkgFree(file);
+    p = strstr(text, "\"credits\":[");
+    end = p ? strchr(p, ']') : NULL;   /* the rows hold no array: the first ] ends the list */
+    if (p && end) {
+        p += strlen("\"credits\":[");
+        while (n < max) {
+            char *t1 = strstr(p, "\"text1\":");
+            char *t2 = t1 ? strstr(t1, "\"text2\":") : NULL;
+            if (!t1 || !t2 || t1 > end || t2 > end) break;
+            ids[2 * n] = (unsigned short)strtol(t1 + strlen("\"text1\":"), NULL, 10);
+            ids[2 * n + 1] = (unsigned short)strtol(t2 + strlen("\"text2\":"), NULL, 10);
+            n++;
+            p = t2 + 8;
+        }
+    }
+    free(text);
+    return n;
+}
+
 /* The menu's overlay (menu_game.cpp): the scripted credits on screen, and how far they got. 0 when there are none. */
 int portCreditsView(const MissionCredits **credits, double *seconds)
 {
@@ -1070,7 +1111,7 @@ const MissionHostCinema *missionsHostCinema(void)
     h.camera_set = hCameraSet; h.camera_move = hCameraMove; h.camera_moving = hCameraMoving; h.camera_stop = hCameraStop;
     h.fade = hFade; h.fading = hFading;
     h.credits_roll = hCreditsRoll; h.credits_done = hCreditsDone;
-    h.credits_show = hCreditsShow; h.credits_stop = hCreditsStop;
+    h.credits_show = hCreditsShow; h.credits_stop = hCreditsStop; h.credits_rows = hCreditsRows;
     h.body_teleport = hBodyTeleport; h.body_anim = hBodyAnim; h.body_anim_done = hBodyAnimDone;
     h.body_hold_item = hBodyHoldItem; h.body_show = hBodyShow; h.body_fade = hBodyFade; h.body_remove = hBodyRemove; h.body_set_shadow = hBodySetShadow;
     h.body_aim = hBodyAim; h.body_walk = hBodyWalk; h.body_drop_item = hBodyDropItem; h.body_set_gravity = hBodySetGravity;

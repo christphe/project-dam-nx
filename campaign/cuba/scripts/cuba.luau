@@ -63,9 +63,62 @@ wait(3)
 L.top("5009")
 wait(3)
 L.top("500A")
--- Cinematics 6: the credits, the orbit and the animation loop going on behind them
+-- Cinematics 6: the credits, the orbit and the animation loop going on behind them. The level's credit rows (two text
+-- ids each) become plain lines: two texts are a role and a name, one text is a centred line, none is a blank row. The
+-- game's block starts with the intro's cast list (a few rows, then a long run of blank rows): that is not credits, so
+-- the rows before the first long blank run are left out (and kept if there is no such run).
+local NO_TEXT = 0x5011   -- "nothing in this column"
+local CAST_GAP = 8       -- blank rows that end the cast list
+local ROW = 1.5          -- screen lines of one row of the block
+
+local function credit_text(id: number): string?
+    if id == 0 or id == NO_TEXT then
+        return nil
+    end
+    local t = text(id)
+    if t == nil or t == "" or t:find("[\128-\255]") then   -- no text, or Japanese glyph codes (the overlay has no font)
+        return nil
+    end
+    return t
+end
+
+local function credit_lines(skip_cast: boolean): { CreditsLine }
+    local lines: { CreditsLine } = {}
+    local blanks, pending = 0, 0
+    local started = not skip_cast
+    for _, row in credits.rows() do
+        local a, b = credit_text(row.text1), credit_text(row.text2)
+        if a == nil and b == nil then
+            blanks += 1
+            if started then
+                pending += ROW
+            end
+        elseif not started and blanks < CAST_GAP then
+            blanks = 0   -- still in the cast list
+        else
+            started = true
+            blanks = 0
+            if pending > 0 then
+                table.insert(lines, { gap = pending })
+                pending = 0
+            end
+            if a ~= nil and b ~= nil then
+                table.insert(lines, { left = a, right = b })
+            else
+                table.insert(lines, (a or b) :: string)
+            end
+            pending += ROW - 1
+        end
+    end
+    return lines
+end
+
 wait(5)
-credits.roll()
+local credit_rows = credit_lines(true)
+if #credit_rows == 0 then
+    credit_rows = credit_lines(false)
+end
+credits.show({ speed = 2.5, lines = credit_rows })
 while not credits.done() do
     wait(0.25)
 end

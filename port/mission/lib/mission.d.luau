@@ -513,9 +513,8 @@ declare camera: {
 --   { left = string?, right = string? }                                                              two columns (a role and a name)
 --   { gap = number }                                                                                  that many empty lines
 export type CreditsLine = string
-    | { text: string, style: ("text" | "heading" | "title")?, align: ("center" | "left" | "right")? }
-    | { left: string?, right: string? }
-    | { gap: number }
+    | { text: string?, style: ("text" | "heading" | "title")?, align: ("center" | "left" | "right")?,
+        left: string?, right: string?, gap: number? }
 
 declare credits: {
     roll: () -> (),                                     -- the game's own end credits (the Cuba level only)
@@ -526,6 +525,9 @@ declare credits: {
                                                         -- "black"; align: the default alignment of the plain lines
                                                         -- ("center" by default). At most 400 lines, 95 bytes each.
     stop: () -> (),                                     -- ends the scripted credits at once (done() is then true)
+    rows: () -> { { text1: number, text2: number } },   -- the level's own credits block, row by row (the Cuba level's;
+                                                        -- empty elsewhere): two text ids per row, for text(id). The id
+                                                        -- 0x5011 means "nothing in this column". Build show's lines from it
     done: () -> boolean,                                -- the credits (roll or show) ended
 }
 

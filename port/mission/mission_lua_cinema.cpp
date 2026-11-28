@@ -463,6 +463,26 @@ int cr_show(lua_State *L)
     return 0;
 }
 
+// credits.rows(): the level's own credits block as { { text1 = id, text2 = id }, ... } (empty in a level without one).
+int cr_rows(lua_State *L)
+{
+    static unsigned short ids[2 * 1024];
+    const MissionHostCinema *h = cx(L);
+    int n = 0;
+    if (h && h->credits_rows) n = h->credits_rows(h->ud, ids, 1024);
+    else unavailable(L, "credits.rows", "not implemented yet");
+    lua_createtable(L, n, 0);
+    for (int i = 0; i < n; i++) {
+        lua_createtable(L, 0, 2);
+        lua_pushnumber(L, ids[2 * i]);
+        lua_setfield(L, -2, "text1");
+        lua_pushnumber(L, ids[2 * i + 1]);
+        lua_setfield(L, -2, "text2");
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
 int cr_stop(lua_State *L) { NEED(L, "credits.stop", credits_stop) h_->credits_stop(h_->ud); return 0; }
 
 int cr_done(lua_State *L)
@@ -839,7 +859,7 @@ void missionLuaRegCinema(lua_State *L, int targetMT)
         free(bc);
     }
     table(L, "screen", { Fn{ "fade_out", scr_fade_out }, Fn{ "fade_in", scr_fade_in }, Fn{ "fading", scr_fading } });
-    table(L, "credits", { Fn{ "roll", cr_roll }, Fn{ "show", cr_show }, Fn{ "stop", cr_stop }, Fn{ "done", cr_done } });
+    table(L, "credits", { Fn{ "roll", cr_roll }, Fn{ "show", cr_show }, Fn{ "stop", cr_stop }, Fn{ "rows", cr_rows }, Fn{ "done", cr_done } });
     lua_pushcfunction(L, l_bond_body, "bond_body");
     lua_setglobal(L, "bond_body");
 
