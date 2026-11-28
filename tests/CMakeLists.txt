@@ -56,6 +56,10 @@ ge_add_pure_test(test_leveldecor test_leveldecor.c ${CMAKE_SOURCE_DIR}/port/src/
 target_compile_definitions(test_leveldecor PRIVATE LEVELDECOR_PURE_TEST)
 set_property(TARGET test_leveldecor PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/third_party/cgltf" "${CMAKE_SOURCE_DIR}/port/third_party/cjson")
 set_property(TARGET test_leveldecor PROPERTY COMPILE_OPTIONS "")   # plain host C: no shadow headers, no forced versioninfo.h (as ge_leveldecor)
+# The pack music (port/src/musicseq.c, musicpack.c): the sequencer, the slots and the stack reload, the asset stack stubbed.
+ge_add_pure_test(test_music test_music.c ${CMAKE_SOURCE_DIR}/port/src/musicseq.c ${CMAKE_SOURCE_DIR}/port/src/musicpack.c)
+target_compile_definitions(test_music PRIVATE MPK_PURE_TEST)
+target_include_directories(test_music PRIVATE "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/assets")
 # CONSOLE mode precedence (port/include/console.h, header-only): pure, no core.
 ge_add_pure_test(test_console test_console.c)
 
