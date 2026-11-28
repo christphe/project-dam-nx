@@ -163,6 +163,33 @@ Time budgets (a first version: nothing is ever cut, going over one logs a warnin
 script's load, 10 s for its `start()`, 10 s for a `require`d module's top level, and 2 ms per frame for all the scripts
 together. A frame-time resume still running after 1 s is named in the log: a loop that never waits freezes the game.
 
+### Credits
+
+`credits.show(def)` scrolls your own credits up the screen, over every player's view, until the last line has left (it
+works in any level; `credits.roll()` is the game's own end credits and only works in the Cuba level):
+
+```lua
+credits.show({
+    speed = 1.5,           -- lines per second (the screen is 24 lines high); 0.2 to 10
+    backdrop = "black",    -- "world" (the default: the game stays visible behind) or "black"
+    align = "center",      -- the default alignment of the plain lines: "center", "left" or "right"
+    lines = {
+        { text = "Operation Halcyon", style = "title" },
+        { gap = 2 },                                        -- two empty lines
+        { text = "Cast", style = "heading" },
+        { left = "Agent", right = "Alice Example" },        -- two columns: a role and a name
+        "A plain line",
+        { text = "Thanks to everyone", align = "right" },
+    },
+})
+while not credits.done() do wait(0.25) end
+```
+
+`credits.stop()` ends them at once; `credits.done()` is true when they ended (or were stopped). Lines are measured in
+lines of the screen, so the credits look the same at any resolution; a text longer than 95 bytes is cut, and a list holds
+400 lines at most (a longer one is a script error). The credits stand still while the game is paused. Text is yours, in
+the language you write it in: the host adds nothing.
+
 ### Events, tasks and modules
 
 - `on(name, fn [, filter]) -> Connection` calls `fn(event)` every time a matching event is raised, on the game tick; each call

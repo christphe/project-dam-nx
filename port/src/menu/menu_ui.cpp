@@ -1458,6 +1458,46 @@ void drawAssign(float W, float H, const std::vector<std::string>& names, int ste
     ImGui::End();
 }
 
+void drawCredits(float W, float H, const CreditsView& v) {
+    if (!g_head || !g_body) return;
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(W, H));
+    ImGui::Begin("##credits", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground |
+                     ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (v.backdrop > 0.0f) dl->AddRectFilled(ImVec2(0, 0), ImVec2(W, H), IM_COL32(0, 0, 0, (int)(255.0f * v.backdrop)));
+    const float L = H / v.view;             /* one line, in pixels */
+    const float margin = 0.12f * W, gutter = 0.8f * L;
+    auto withAlpha = [](ImU32 c, float a) {
+        const float base = (float)(c >> IM_COL32_A_SHIFT) * a;
+        return (c & ~IM_COL32_A_MASK) | ((ImU32)(base < 0.0f ? 0.0f : base > 255.0f ? 255.0f : base) << IM_COL32_A_SHIFT);
+    };
+    for (const CreditsView::Line& ln : v.lines) {
+        const float top = ln.y * L;
+        if (ln.pair) {
+            const float px = 0.62f * L;
+            if (!ln.left.empty()) {
+                const ImVec2 sz = textSize(g_body, px, ln.left.c_str());
+                text(dl, g_body, px, ImVec2(W * 0.5f - gutter - sz.x, top + (L - sz.y) * 0.5f), withAlpha(kMut, ln.alpha), ln.left.c_str());
+            }
+            if (!ln.right.empty()) {
+                const ImVec2 sz = textSize(g_body, px, ln.right.c_str());
+                text(dl, g_body, px, ImVec2(W * 0.5f + gutter, top + (L - sz.y) * 0.5f), withAlpha(kInk, ln.alpha), ln.right.c_str());
+            }
+            continue;
+        }
+        const bool title = ln.style == 2, heading = ln.style == 1;
+        const float px = (title ? 1.5f : heading ? 0.8f : 0.62f) * L;
+        ImFont* font = title || heading ? g_head : g_body;
+        const std::string s = title || heading ? upper(ln.left) : ln.left;
+        const ImVec2 sz = textSize(font, px, s.c_str());
+        const float x = ln.align == 1 ? margin : ln.align == 2 ? W - margin - sz.x : (W - sz.x) * 0.5f;
+        text(dl, font, px, ImVec2(x, top + (ln.h * L - sz.y) * 0.5f), withAlpha(title ? kInk : heading ? kGold : kInk, ln.alpha), s.c_str());
+    }
+    ImGui::End();
+}
+
 void drawCoopCount(float W, float H, int sel, int* hover, bool* click) {
     *hover = -1;
     *click = false;

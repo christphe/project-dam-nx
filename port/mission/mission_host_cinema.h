@@ -19,6 +19,8 @@
 #include <math.h>
 #include <string.h>
 
+#include "mission_host_credits.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -111,6 +113,10 @@ typedef struct MissionHostCinema {
     /* credits: roll returns 0 when this level carries no credits (done() is then true at once) */
     int  (*credits_roll)(void *ud);
     int  (*credits_done)(void *ud);
+    /* credits.show: the scripted credits (mission_host_credits.h) start now over every view; the host copies the list.
+     * credits.stop ends them; credits_done is then true. 1 when it took */
+    int  (*credits_show)(void *ud, const MissionCredits *credits);
+    void (*credits_stop)(void *ud);
     /* bond_body(player): 1 when it took, 0 when the player has no body or the request is refused */
     int  (*body_teleport)(void *ud, int player, int pad);
     int  (*body_anim)(void *ud, int player, const char *name, int id, const MissionCinemaAnim *opts);

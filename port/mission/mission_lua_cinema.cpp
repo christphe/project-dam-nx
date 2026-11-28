@@ -373,6 +373,98 @@ int scr_fading(lua_State *L)
 
 int cr_roll(lua_State *L) { NEED(L, "credits.roll", credits_roll) h_->credits_roll(h_->ud); return 0; }
 
+// The style / alignment named by the string at the top of the stack (nil: `def`); anything else is a script error.
+int credits_enum(lua_State *L, const char *what, const char *const *names, int n, int def)
+{
+    int v = def;
+    if (lua_isstring(L, -1)) {
+        const char *s = lua_tostring(L, -1);
+        v = -1;
+        for (int i = 0; i < n; i++)
+            if (!strcmp(s, names[i])) v = i;
+        if (v < 0) luaL_error(L, "credits.show: %s must be one of \"%s\", \"%s\"%s%s%s, not \"%s\"", what, names[0], names[1],
+                              n > 2 ? ", \"" : "", n > 2 ? names[2] : "", n > 2 ? "\"" : "", s);
+    } else if (!lua_isnil(L, -1)) {
+        luaL_error(L, "credits.show: %s must be a string", what);
+    }
+    return v;
+}
+
+// credits.show(def): the scripted credits (mission_host_credits.h). One script thread, and the list is too big for a
+// stack: a static one is built and handed to the host, which copies it.
+int cr_show(lua_State *L)
+{
+    NEED(L, "credits.show", credits_show)
+    static const char *const kAlign[] = { "center", "left", "right" };
+    static const char *const kStyle[] = { "text", "heading", "title" };
+    static const char *const kBackdrop[] = { "world", "black" };
+    static MissionCredits c;
+    luaL_checktype(L, 1, LUA_TTABLE);
+    mhcrInit(&c);
+
+    lua_getfield(L, 1, "speed");
+    if (lua_isnumber(L, -1)) mhcrSetSpeed(&c, lua_tonumber(L, -1));
+    lua_pop(L, 1);
+    lua_getfield(L, 1, "backdrop");
+    c.black = credits_enum(L, "backdrop", kBackdrop, 2, 0);
+    lua_pop(L, 1);
+    lua_getfield(L, 1, "align");
+    const int defAlign = credits_enum(L, "align", kAlign, 3, MHCR_AL_CENTER);
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "lines");
+    if (!lua_istable(L, -1)) luaL_error(L, "credits.show: lines must be a list");
+    const int n = lua_objlen(L, -1);
+    for (int i = 1; i <= n; i++) {
+        int ok = 1;
+        lua_rawgeti(L, -1, i);
+        if (lua_isstring(L, -1)) {
+            ok = mhcrAddLine(&c, MHCR_ST_TEXT, defAlign, lua_tostring(L, -1));
+        } else if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "gap");
+            const int isGap = lua_isnumber(L, -1);
+            if (isGap) ok = mhcrAddGap(&c, lua_tonumber(L, -1));
+            lua_pop(L, 1);
+            if (!isGap) {
+                lua_getfield(L, -1, "left");
+                char left[MHCR_TEXT] = "", right[MHCR_TEXT] = "";
+                const int hasLeft = lua_isstring(L, -1);
+                if (hasLeft) mhcrCopy(left, lua_tostring(L, -1));
+                lua_pop(L, 1);
+                lua_getfield(L, -1, "right");
+                const int hasRight = lua_isstring(L, -1);
+                if (hasRight) mhcrCopy(right, lua_tostring(L, -1));
+                lua_pop(L, 1);
+                if (hasLeft || hasRight) {
+                    ok = mhcrAddPair(&c, left, right);
+                } else {
+                    lua_getfield(L, -1, "text");
+                    if (!lua_isstring(L, -1)) luaL_error(L, "credits.show: line %d has no text, left, right or gap", i);
+                    char text[MHCR_TEXT];
+                    mhcrCopy(text, lua_tostring(L, -1));
+                    lua_pop(L, 1);
+                    lua_getfield(L, -1, "style");
+                    const int style = credits_enum(L, "style", kStyle, 3, MHCR_ST_TEXT);
+                    lua_pop(L, 1);
+                    lua_getfield(L, -1, "align");
+                    const int align = credits_enum(L, "align", kAlign, 3, defAlign);
+                    lua_pop(L, 1);
+                    ok = mhcrAddLine(&c, style, align, text);
+                }
+            }
+        } else {
+            luaL_error(L, "credits.show: line %d is neither a string nor a table", i);
+        }
+        lua_pop(L, 1);
+        if (!ok) luaL_error(L, "credits.show: more than %d lines", MHCR_MAX_ENTRIES);
+    }
+    lua_pop(L, 1);
+    h_->credits_show(h_->ud, &c);
+    return 0;
+}
+
+int cr_stop(lua_State *L) { NEED(L, "credits.stop", credits_stop) h_->credits_stop(h_->ud); return 0; }
+
 int cr_done(lua_State *L)
 {
     const MissionHostCinema *h = cx(L);
@@ -747,7 +839,7 @@ void missionLuaRegCinema(lua_State *L, int targetMT)
         free(bc);
     }
     table(L, "screen", { Fn{ "fade_out", scr_fade_out }, Fn{ "fade_in", scr_fade_in }, Fn{ "fading", scr_fading } });
-    table(L, "credits", { Fn{ "roll", cr_roll }, Fn{ "done", cr_done } });
+    table(L, "credits", { Fn{ "roll", cr_roll }, Fn{ "show", cr_show }, Fn{ "stop", cr_stop }, Fn{ "done", cr_done } });
     lua_pushcfunction(L, l_bond_body, "bond_body");
     lua_setglobal(L, "bond_body");
 

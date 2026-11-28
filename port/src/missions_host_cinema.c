@@ -10,7 +10,8 @@
  *                       driving a CutsceneRecord of ours through the game's fixed camera (AI_CameraSwitch)
  *   camera.reset        AI_CameraReturnToBond
  *   screen.fade_*       AI_ScreenFadeToBlack / AI_ScreenFadeFromBlack, AI_IFScreenFadeCompleted
- *   credits.*           AI_CreditsRoll / AI_IFCreditsHasCompleted
+ *   credits.roll / done AI_CreditsRoll / AI_IFCreditsHasCompleted
+ *   credits.show / stop our own (mission_host_credits.h): the menu draws the lines over every view (menu_ui.cpp drawCredits)
  *   bond_body:teleport  AI_TRYTeleportingChrToPad on CHR_BOND_CINEMA (the player's own chr)
  *   bond_body:anim      AI_PlayAnimation on that chr, anim_done AI_IFPlayingAnimation's test
  *   bond_body:hold_item AI_BondEquipItemCinema; hide_weapon AI_BondHideWeapons
@@ -86,6 +87,9 @@ static struct {
     int    introDone;         /* "intro_done" went out */
     int    frozen, frozenSaved;   /* set_frozen(true) is in force, and the is_timer_active it replaced */
     int    creditsFake;       /* credits.roll on a level with no credits: done at once */
+    int    crScripted;        /* credits.show was called (done() then follows the scripted credits) */
+    int    crActive;          /* the scripted credits are on screen */
+    double crT;               /* seconds since they started */
     int    weaponHidden[NO_PLAYER_SLOTS];
     int    disarm[NO_PLAYER_SLOTS];     /* frames until the hands of a player whose body was removed are given back (0: none) */
     int    bodyItem[NO_PLAYER_SLOTS];   /* hold_item before show(true): the body is built holding this item (0: none) */
@@ -550,10 +554,14 @@ static int hFading(void *ud)
 
 /* ---- credits ------------------------------------------------------------- */
 
+/* The scripted credits (credits.show): a copy of the script's list (too big for S, which a reset clears with memset). */
+static MissionCredits s_credits;
+
 static int hCreditsRoll(void *ud)
 {
     (void)ud;
     S.creditsFake = 0;
+    S.crScripted = S.crActive = 0;
     /* The game draws the credits in the Cuba level only (bondview2.c: stage == LEVELID_CUBA, credits_pointer from the
      * level's text); anywhere else they would never start or finish. */
     if (bossGetStageNum() == LEVELID_CUBA && credits_pointer != NULL) {
@@ -568,7 +576,34 @@ static int hCreditsRoll(void *ud)
 static int hCreditsDone(void *ud)
 {
     (void)ud;
+    if (S.crScripted) return !S.crActive;
     return S.creditsFake || credits_state == 2;   /* AI_IFCreditsHasCompleted */
+}
+
+static int hCreditsShow(void *ud, const MissionCredits *c)
+{
+    (void)ud;
+    memcpy(&s_credits, c, sizeof s_credits);
+    S.creditsFake = 0;
+    S.crScripted = 1;
+    S.crActive = 1;
+    S.crT = 0.0;
+    return 1;
+}
+
+static void hCreditsStop(void *ud)
+{
+    (void)ud;
+    S.crActive = 0;
+}
+
+/* The menu's overlay (menu_game.cpp): the scripted credits on screen, and how far they got. 0 when there are none. */
+int portCreditsView(const MissionCredits **credits, double *seconds)
+{
+    if (!S.crActive) return 0;
+    *credits = &s_credits;
+    *seconds = S.crT;
+    return 1;
 }
 
 /* ---- bond_body ----------------------------------------------------------- */
@@ -1035,6 +1070,7 @@ const MissionHostCinema *missionsHostCinema(void)
     h.camera_set = hCameraSet; h.camera_move = hCameraMove; h.camera_moving = hCameraMoving; h.camera_stop = hCameraStop;
     h.fade = hFade; h.fading = hFading;
     h.credits_roll = hCreditsRoll; h.credits_done = hCreditsDone;
+    h.credits_show = hCreditsShow; h.credits_stop = hCreditsStop;
     h.body_teleport = hBodyTeleport; h.body_anim = hBodyAnim; h.body_anim_done = hBodyAnimDone;
     h.body_hold_item = hBodyHoldItem; h.body_show = hBodyShow; h.body_fade = hBodyFade; h.body_remove = hBodyRemove; h.body_set_shadow = hBodySetShadow;
     h.body_aim = hBodyAim; h.body_walk = hBodyWalk; h.body_drop_item = hBodyDropItem; h.body_set_gravity = hBodySetGravity;
@@ -1098,6 +1134,12 @@ void missionsHostCinemaTick(void)
     if (S.active && !S.skipped) {
         for (p = 0; p < getPlayerCount() && p < NO_PLAYER_SLOTS; p++)
             if (joyGetButtonsPressedThisFrame((s8)p, A_BUTTON | B_BUTTON | Z_TRIG | START_BUTTON) != 0) S.skipped = 1;
+    }
+
+    /* the scripted credits scroll with the game's clock (it stands still when the game is paused) */
+    if (S.crActive) {
+        S.crT += (double)g_GlobalTimerDelta / 60.0;
+        if (mhcrFinished(&s_credits, S.crT)) S.crActive = 0;
     }
 
     /* the scene camera (camera.set / move / orbit): one step per game frame (g_GlobalTimerDelta is in 60ths of a second) */

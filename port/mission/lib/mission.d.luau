@@ -508,9 +508,25 @@ declare camera: {
 -- Every player's view shows the scene camera while one is set (set, move, orbit, fixed, path) inside a cinema scene;
 -- outside a scene, the camera calls show it to every player too, until camera.reset().
 
+-- One line of credits. A string is a plain line. A table is one of:
+--   { text = string, style = "text" | "heading" | "title"?, align = "center" | "left" | "right"? }   a styled line
+--   { left = string?, right = string? }                                                              two columns (a role and a name)
+--   { gap = number }                                                                                  that many empty lines
+export type CreditsLine = string
+    | { text: string, style: ("text" | "heading" | "title")?, align: ("center" | "left" | "right")? }
+    | { left: string?, right: string? }
+    | { gap: number }
+
 declare credits: {
-    roll: () -> (),                                     -- the game's end credits
-    done: () -> boolean,
+    roll: () -> (),                                     -- the game's own end credits (the Cuba level only)
+    show: (def: { lines: { CreditsLine }, speed: number?, backdrop: ("world" | "black")?, align: ("center" | "left" | "right")? }) -> (),
+                                                        -- your own credits, scrolling up over every player's view.
+                                                        -- speed: lines per second (default 1.5; the screen is 24 lines
+                                                        -- high); backdrop: "world" (default, the game stays visible) or
+                                                        -- "black"; align: the default alignment of the plain lines
+                                                        -- ("center" by default). At most 400 lines, 95 bytes each.
+    stop: () -> (),                                     -- ends the scripted credits at once (done() is then true)
+    done: () -> boolean,                                -- the credits (roll or show) ended
 }
 
 -- #165 events (raised by the host; wait(event(name, filter)) / on(name, fn, filter)):
