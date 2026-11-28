@@ -17,7 +17,7 @@ A pack is a folder `X.passets/` or an uncompressed ustar tar `X.passets` (the
 | `pack.json` | optional: `name`, `author`, `description`, `base` (see below) |
 | `textures.json`, `textures/` | textures: [texture-packs.md](texture-packs.md) (entries, keys, fields) |
 | `models.json`, `models/` | models: reserved, specified with the engine's model reader |
-| `music.json`, `music/` | music (MIDI + SF2): reserved |
+| `music/music.json`, `music/` | music: `music/track_NN.mid` (NN = the game's two-digit track number; loop markers as in [audio.md](audio.md) "Writing a Standard MIDI File"), `music/instruments.sf2` (program p = bank 0 preset p, channel 10 melodic) and `music/music.json` `{"default_volume": [64 numbers 0..32767]}`, the track default volume D[t] of track number t ([audio.md](audio.md) "Volume chain"; missing: 32767). Each file is resolved on its own, so a mod can replace one track, the SoundFont or the volumes |
 | `sounds.json`, `sounds/` | sounds: reserved |
 | `labels.json` | text labels: reserved |
 | `fonts.json`, `fonts/` | fonts: [fonts.md](fonts.md) (keys `small`, `large`, `jp_narrow`, `jp_wide`) |
@@ -83,13 +83,20 @@ into `<out>/` (`--folder` writes a folder instead of the tar), and by
 |---|---|
 | `pack.json` | `name`, `author`, `description`, `"base": true`, `region`, `exporter_version` |
 | `textures.json`, `textures/<n>.png` | every texture of the ROM ([texture-packs.md](texture-packs.md)) |
-| `levels/<level>/<level>.gltf` + `.bin` | each level's decor, with its collision and setup files beside it |
+| `levels/<level>/<level>.gltf` + `.bin` | each level's decor, with its collision and setup files beside it. The game draws the rooms from the `.gltf` + `.bin` (nodes `room_<n>`, below) |
 | `models/<name>/<name>.gltf` + `.bin` | the object models |
 | `characters/characters.json`, `characters/<name>/`, `characters/animations/` | bodies, heads and animations ([characters.md](characters.md)) |
 | `labels/` | the game's text per language, and the names tables ([text.md](text.md)) |
 | `fonts.json`, `fonts/<key>.png` | the four fonts: 8-bit greyscale atlases (Latin intensities as stored, Japanese level x 85) and their metrics, kerning and code map ([fonts.md](fonts.md)) |
-| `music/track_NN.mid`, `music/instruments.sf2` | the music as Standard MIDI files and its SoundFont ([audio.md](audio.md)) |
+| `music/track_NN.mid`, `music/instruments.sf2`, `music/music.json` | the music as Standard MIDI files with their loop markers, its SoundFont and the track default volumes ([audio.md](audio.md)) |
 | `sounds/sfx/sfx_NNNN.wav`, `sounds/sfx/sfx.json`, `sounds/report.txt` | the sound effects and their parameters |
+
+What the game reads of a level glTF (`port/src/leveldecor.c`): for each node `room_<n>` (or `extras.room`), its mesh's
+triangle primitives with POSITION (x `asset.extras.level_scale` gives the room's own units, the node's translation is not
+applied: the game's room matrix places it), TEXCOORD_0, COLOR_0 (linear, converted back to the game's sRGB shade) times
+`baseColorFactor`, and the material's `alphaMode`, `doubleSided`, sampler wrap / `magFilter`, `extras.texture` (the
+texture key, resolved through the stack) and `extras.n64` (`list` primary / secondary, the depth bits of `othermode[1]`,
+the cull bits of `geometry_mode`). Nodes named `collision*` are skipped. A level or room missing from the stack is not drawn.
 
 Every glTF sits two folders under the root and names its pictures
 `../../textures/<n>.png`. The pack is rewritten when its `exporter_version`

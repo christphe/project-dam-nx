@@ -49,6 +49,35 @@ static int write_file(const char *path, const uint8_t *data, size_t n)
     return ok ? 0 : -1;
 }
 
+/* The track default volume D[t] (docs/specs/audio.md "Volume chain"), one per track number 0..63. */
+#define GE_AE_MUSIC_DEFAULT_VOLUMES 64
+static const int s_default_volume[GE_AE_MUSIC_DEFAULT_VOLUMES] = {
+    0x6665, 0x7332, 0x7332, 0x7998, 0x7332, 0x5998, 0x6665, 0x6665, 0x6665, 0x6665, /* 0..9 */
+    0x7332, 0x6665, 0x7332, 0x6665, 0x6665, 0x7332, 0x7332, 0x6665, 0x3FFF, 0x6665, /* 10..19 */
+    0x6665, 0x3FFF, 0x6665, 0x6665, 0x6665, 0x6665, 0x6665, 0x7998, 0x6665, 0x5998, /* 20..29 */
+    0x6665, 0x6665, 0x6665, 0x6665, 0x6665, 0x6665, 0x6665, 0x5998, 0x6665, 0x3332, /* 30..39 */
+    0x6665, 0x7332, 0x7332, 0x5998, 0x7332, 0x6665, 0x6665, 0x6665, 0x6665, 0x6665, /* 40..49 */
+    0x6665, 0x6665, 0x6CCB, 0x6665, 0x6665, 0x6665, 0x6665, 0x6665, 0x6665, 0x6665, /* 50..59 */
+    0x7332, 0x6665, 0x7332, 0x7998,                                                 /* 60..63 */
+};
+
+/* music/music.json: {"default_volume": [D[0], ..., D[63]]} (decimal, 0..32767). */
+static int write_music_json(const char *path)
+{
+    FILE *f = fopen(path, "wb");
+    int i, ok;
+    if (!f)
+        return -1;
+    fprintf(f, "{\n  \"default_volume\": [");
+    for (i = 0; i < GE_AE_MUSIC_DEFAULT_VOLUMES; i++)
+        fprintf(f, "%s%s%d", i ? "," : "", i % 10 ? " " : "\n    ", s_default_volume[i]);
+    fprintf(f, "\n  ]\n}\n");
+    ok = !ferror(f);
+    if (fclose(f) != 0)
+        ok = 0;
+    return ok ? 0 : -1;
+}
+
 static void export_music(const uint8_t *rom, size_t size, const ge_ae_layout *lay, int ntracks, const char *out_dir,
                          FILE *rep)
 {
@@ -100,9 +129,24 @@ static void export_music(const uint8_t *rom, size_t size, const ge_ae_layout *la
                 (unsigned)st.unknown_metas, (unsigned)st.channel_mask, (unsigned)st.length_ticks,
                 (unsigned)st.first_tempo_us, (unsigned)st.loop_start_tick, (unsigned)st.loop_end_tick, mid.size,
                 (unsigned)st.overlaps_cut, chg, st.warning[0] ? " WARNING: " : "", st.warning);
+        {
+            int q;
+            for (q = 0; q < 16; q++) {
+                if (st.overlaps_track[q])
+                    fprintf(rep, "track %02d t%d: %u same-key overlaps cut\n", i, q, (unsigned)st.overlaps_track[q]);
+                if (st.dead_loop_ends[q])
+                    fprintf(rep, "track %02d t%d: %u unreachable loop end(s) dropped\n", i, q, (unsigned)st.dead_loop_ends[q]);
+            }
+        }
         ge_ae_buf_free(&mid);
     }
-    fprintf(rep, "music: %d files written\n\n", written);
+    fprintf(rep, "music: %d files written\n", written);
+    snprintf(path, sizeof path, "%s/music/music.json", out_dir);
+    if (write_music_json(path))
+        fail(rep, "%s: cannot write %s", "music.json", path);
+    else
+        fprintf(rep, "music: music.json written (%d default volumes)\n", GE_AE_MUSIC_DEFAULT_VOLUMES);
+    fprintf(rep, "\n");
 }
 
 static void export_bank(const uint8_t *rom, size_t size, const char *label, uint32_t ctl, uint32_t ctl_size,

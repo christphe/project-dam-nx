@@ -5,35 +5,40 @@
  *   midiplay --render <export_dir> <track> <out.wav> [seconds]
  *   midiplay --check <export_dir>
  *
- * --check loads every music/track_NN.mid and both .sf2 files and prints what the
- * loaders found (used by automated checks).
+ * <export_dir> is an asset pack as a folder (ge007-export <rom> <out> --folder writes
+ * <out>/ge007.passets/): music/track_NN.mid, music/instruments.sf2, music/music.json. An older
+ * export with instruments.sf2 at its root is read too.
  *
- * Plays <export_dir>/music/track_NN.mid with <export_dir>/instruments.sf2 through
- * TinySoundFont / TinyMidiLoader. Both files are watched: when one changes on disk
- * it is reloaded and playback continues at the same position, so the exporter can
- * be re-run while listening. Channel 10 is an ordinary melodic channel (the bank
+ * --check loads the SoundFont and every music/track_NN.mid and prints what it found: loop
+ * markers, unresolved loop ends, the length of one pass (used by automated checks).
+ *
+ * Plays like the game: the sequence through the game's sequencer (port/src/musicseq.c: every
+ * MIDI track loops on its own, loopEnd <id> <count|inf> repeats as the game does), the synth
+ * TinySoundFont, each track at the game's level from music.json. Both files are watched: when
+ * one changes on disk it is reloaded and playback continues at about the same position, so the
+ * exporter can be re-run while listening. Channel 10 is an ordinary melodic channel (the bank
  * has no drum meaning).
  *
  * Keys: Right/N next track, Left/P previous, R restart, Space stop/play,
- *       L loop on/off, Up/Down volume, Q/Esc quit.
+ *       L loop as in the game / one straight pass (restarts), Up/Down volume, Q/Esc quit.
  */
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 
 #include <math.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #define TSF_IMPLEMENTATION
 #include "tsf.h"
-#define TML_IMPLEMENTATION
-#include "tml.h"
+#include "musicseq.h"
 
 #define MAX_TRACKS 128
 #define BLOCK_FRAMES 64          /* TSF render granularity; messages are dispatched per block */
-#define BASE_GAIN_DB (-9.0f)     /* headroom: sequences stack many voices */
+#define BASE_GAIN_DB (-4.0f)     /* the game's synth headroom (port/src/musicpack.c MPK_BASE_GAIN_DB) */
 #define MAX_VOICES 128
 #define TAIL_MS 3000.0           /* let releases ring out after the last message */
 #define POLL_MS 400              /* file change polling interval */
@@ -81,185 +86,33 @@ static unsigned char *read_file(const char *path, int *size)
     return p;
 }
 
-/* ---- SMF scan: loop markers in milliseconds ------------------------------------
- * TinyMidiLoader drops marker events, so the loopStart / loopEnd markers the
- * exporter writes are found here. Loop region: from the earliest loopStart to the
- * latest loopEnd (or to the end of the music when there is no loopEnd). */
-typedef struct {
-    int has_loop;
-    double start_ms, end_ms; /* end_ms < 0: until the end of the music */
-} loopinfo;
-
-typedef struct {
-    unsigned tick, us;
-} tempo_ev;
-
-static unsigned be16(const unsigned char *p) { return (unsigned)(p[0] << 8 | p[1]); }
-static unsigned be32(const unsigned char *p) { return (unsigned)p[0] << 24 | (unsigned)p[1] << 16 | (unsigned)p[2] << 8 | p[3]; }
-
-static int tempo_cmp(const void *a, const void *b)
-{
-    const tempo_ev *x = (const tempo_ev *)a, *y = (const tempo_ev *)b;
-    return x->tick < y->tick ? -1 : (x->tick > y->tick);
-}
-
-static double ticks_to_ms(const tempo_ev *t, int nt, unsigned division, unsigned tick)
-{
-    double ms = 0.0;
-    unsigned last = 0, us = 500000;
-    int i;
-    for (i = 0; i < nt && t[i].tick < tick; i++) {
-        ms += (double)(t[i].tick - last) * us / division / 1000.0;
-        last = t[i].tick;
-        us = t[i].us;
-    }
-    return ms + (double)(tick - last) * us / division / 1000.0;
-}
-
-static loopinfo scan_loops(const unsigned char *d, int n)
-{
-    loopinfo li = {0, 0.0, -1.0};
-    tempo_ev tempi[256];
-    int nt = 0, ntrk, t;
-    size_t p = 14;
-    unsigned division, min_start = 0xFFFFFFFFu, max_end = 0;
-    int have_start = 0, have_end = 0;
-
-    if (n < 14 || memcmp(d, "MThd", 4) != 0)
-        return li;
-    ntrk = (int)be16(d + 10);
-    division = be16(d + 12);
-    if (!division)
-        return li;
-    for (t = 0; t < ntrk && p + 8 <= (size_t)n; t++) {
-        size_t q, e;
-        unsigned tick = 0;
-        int running = 0;
-        if (memcmp(d + p, "MTrk", 4) != 0)
-            break;
-        q = p + 8;
-        e = q + be32(d + p + 4);
-        if (e > (size_t)n)
-            e = (size_t)n;
-        p = e;
-        while (q < e) {
-            unsigned v = 0;
-            int i = 0, st;
-            do {
-                if (q >= e || i++ == 4)
-                    goto next_track;
-                v = (v << 7) | (d[q] & 0x7F);
-            } while (d[q++] & 0x80);
-            tick += v;
-            if (q >= e)
-                break;
-            st = d[q];
-            if (st == 0xFF) {
-                unsigned type, len;
-                if (q + 3 > e)
-                    break;
-                type = d[q + 1];
-                len = d[q + 2];
-                q += 3;
-                if (q + len > e)
-                    break;
-                if (type == 0x51 && len == 3 && nt < 256) {
-                    tempi[nt].tick = tick;
-                    tempi[nt++].us = (unsigned)d[q] << 16 | (unsigned)d[q + 1] << 8 | d[q + 2];
-                } else if (type == 0x06) {
-                    if (len == 9 && memcmp(d + q, "loopStart", 9) == 0) {
-                        have_start = 1;
-                        if (tick < min_start)
-                            min_start = tick;
-                    } else if (len == 7 && memcmp(d + q, "loopEnd", 7) == 0) {
-                        have_end = 1;
-                        if (tick > max_end)
-                            max_end = tick;
-                    }
-                }
-                q += len;
-                running = 0;
-            } else {
-                if (st & 0x80) {
-                    running = st;
-                    q++;
-                } else if (!running) {
-                    break;
-                }
-                q += ((running & 0xF0) == 0xC0 || (running & 0xF0) == 0xD0) ? 1 : 2;
-            }
-        }
-    next_track:;
-    }
-    if (!have_start)
-        return li;
-    qsort(tempi, (size_t)nt, sizeof tempi[0], tempo_cmp);
-    li.has_loop = 1;
-    li.start_ms = ticks_to_ms(tempi, nt, division, min_start);
-    li.end_ms = have_end ? ticks_to_ms(tempi, nt, division, max_end) : -1.0;
-    if (have_end && li.end_ms <= li.start_ms)
-        li.has_loop = 0;
-    return li;
-}
-
-/* ---- the player ------------------------------------------------------------------ */
+/* ---- the player ------------------------------------------------------------------
+ * The sequence is played by the game's own sequencer (port/src/musicseq.c, docs/specs/audio.md "How a player loops a
+ * file with these markers"): every MIDI track loops on its own, each loopEnd <id> <count|inf> repeats its loop count times
+ * (forever for inf), notes end by duration in played time. With looping off every loop end falls through: the file is
+ * played straight once. The level of a track is the game's: (default volume / 32768)^2 from music/music.json. */
 typedef struct {
     tsf *sf;
-    tml_message *mid, *cur;
-    loopinfo loop;
-    double msec, length_ms;
+    MsqSeq *seq;
+    MsqPlayer pl;
+    int started;
+    uint8_t *counts;         /* the file's loop counts (seq->counter_init is overwritten while looping is off) */
+    double msec, length_ms;  /* played time; one straight pass */
+    double tail_ms;          /* after the sequence ended: releases ring out, then it stops */
     int rate;
     int playing;
     int loop_on;
-    float volume;
+    int over;
+    float volume, track_gain;
 } player;
 
-static void apply_state(tsf *sf, const tml_message *m)
-{
-    int ch = m->channel;
-    switch (m->type) {
-    case TML_PROGRAM_CHANGE:
-        /* Bank 0, program = instrument index. Not tsf_channel_set_presetnumber: that one
-         * applies the drum rules to channel 10 and the bank has no drums. */
-        tsf_channel_set_bank_preset(sf, ch, 0, (unsigned char)m->program);
-        break;
-    case TML_CONTROL_CHANGE:
-        tsf_channel_midi_control(sf, ch, (unsigned char)m->control, (unsigned char)m->control_value);
-        break;
-    case TML_PITCH_BEND:
-        tsf_channel_set_pitchwheel(sf, ch, m->pitch_bend);
-        break;
-    default:
-        break;
-    }
-}
-
-static void dispatch(tsf *sf, const tml_message *m)
-{
-    int ch = m->channel;
-    switch (m->type) {
-    case TML_NOTE_ON:
-        tsf_channel_note_on(sf, ch, (unsigned char)m->key, (unsigned char)m->velocity / 127.0f);
-        break;
-    case TML_NOTE_OFF:
-        tsf_channel_note_off(sf, ch, (unsigned char)m->key);
-        break;
-    default:
-        apply_state(sf, m);
-        break;
-    }
-}
-
-/* Channel state (programs, controllers, bends) as it is at `ms`, without sounding notes. */
-static void replay_state(tsf *sf, tml_message *mid, double ms, tml_message **cur_out)
-{
-    tml_message *m = mid;
-    while (m && m->time < ms) {
-        apply_state(sf, m);
-        m = m->next;
-    }
-    *cur_out = m;
-}
+static void cb_note_on(void *u, int ch, int key, int vel) { tsf_channel_note_on((tsf *)u, ch, key, vel / 127.0f); }
+static void cb_note_off(void *u, int ch, int key) { tsf_channel_note_off((tsf *)u, ch, key); }
+static void cb_control(void *u, int ch, int cc, int v) { tsf_channel_midi_control((tsf *)u, ch, cc, v); }
+/* Bank 0, program = instrument index. Not tsf_channel_set_presetnumber: that one applies the drum rules to channel 10
+ * and the bank has no drums. */
+static void cb_program(void *u, int ch, int prog) { tsf_channel_set_bank_preset((tsf *)u, ch, 0, prog); }
+static void cb_bend(void *u, int ch, int v) { tsf_channel_set_pitchwheel((tsf *)u, ch, v); }
 
 static tsf *new_synth(tsf *loaded, int rate)
 {
@@ -271,19 +124,61 @@ static tsf *new_synth(tsf *loaded, int rate)
     return loaded;
 }
 
-static void seek(player *p, double ms)
+static void set_counts(player *p)
 {
-    tsf_reset(p->sf);
-    new_synth(p->sf, p->rate);
-    p->msec = ms;
-    replay_state(p->sf, p->mid, ms, &p->cur);
+    if (p->seq && p->counts)
+        for (int i = 0; i < p->seq->ncounters; i++)
+            p->seq->counter_init[i] = p->loop_on ? p->counts[i] : 0;
 }
 
-static double music_length_ms(tml_message *m)
+/* One straight pass (no loop jump), in milliseconds. */
+static double straight_length_ms(MsqSeq *seq)
 {
-    unsigned len = 0;
-    tml_get_info(m, NULL, NULL, NULL, NULL, &len);
-    return (double)len;
+    MsqPlayer q;
+    MsqSink none;
+    double ms = 0.0;
+    uint8_t *keep = (uint8_t *)malloc((size_t)seq->ncounters + 1);
+    memset(&none, 0, sizeof none);
+    if (!keep)
+        return 0.0;
+    memcpy(keep, seq->counter_init, (size_t)seq->ncounters);
+    memset(seq->counter_init, 0, (size_t)seq->ncounters);
+    if (msqStart(&q, seq)) {
+        while (msqAdvance(&q, 10000.0, &none) && ms < 3600000.0)
+            ms += 10.0;
+        msqStopPlayer(&q);
+    }
+    memcpy(seq->counter_init, keep, (size_t)seq->ncounters);
+    free(keep);
+    return ms;
+}
+
+/* Restart from the beginning, then play silently up to `ms` (programs, controllers and bends applied, no notes). */
+static void seek(player *p, double ms)
+{
+    MsqSink state;
+    memset(&state, 0, sizeof state);
+    state.user = p->sf;
+    state.control = cb_control;
+    state.program = cb_program;
+    state.bend = cb_bend;
+    tsf_reset(p->sf);
+    new_synth(p->sf, p->rate);
+    if (p->started)
+        msqStopPlayer(&p->pl);
+    p->started = 0;
+    p->msec = 0.0;
+    p->over = 0;
+    p->tail_ms = 0.0;
+    if (!p->seq)
+        return;
+    set_counts(p);
+    if (!msqStart(&p->pl, p->seq))
+        return;
+    p->started = 1;
+    while (p->msec + 10.0 <= ms && msqAdvance(&p->pl, 10000.0, &state))
+        p->msec += 10.0;
+    tsf_note_off_all(p->sf);
 }
 
 /* Render `frames` stereo float frames. Called from the audio thread (device locked
@@ -291,51 +186,47 @@ static double music_length_ms(tml_message *m)
 static void player_render(player *p, float *out, int frames)
 {
     int done = 0;
-    if (!p->sf || !p->playing) {
+    MsqSink sink;
+    float g;
+    if (!p->sf || !p->playing || !p->started) {
         memset(out, 0, (size_t)frames * 2 * sizeof(float));
         return;
     }
+    sink.user = p->sf;
+    sink.note_on = cb_note_on;
+    sink.note_off = cb_note_off;
+    sink.control = cb_control;
+    sink.program = cb_program;
+    sink.bend = cb_bend;
     while (done < frames) {
         int n = frames - done > BLOCK_FRAMES ? BLOCK_FRAMES : frames - done;
-        int looping = p->loop_on && p->loop.has_loop;
-        double loop_end = p->loop.end_ms >= 0 ? p->loop.end_ms : p->length_ms;
-
-        p->msec += n * 1000.0 / p->rate;
-        while (p->cur && p->cur->time <= p->msec) {
-            if (looping && p->cur->time >= loop_end)
-                break;
-            dispatch(p->sf, p->cur);
-            p->cur = p->cur->next;
-        }
-        if (looping && p->msec >= loop_end) {
-            /* back to the start of the loop; channel state carries over */
-            double over = p->msec - loop_end;
-            tml_message *m = p->mid;
-            tsf_note_off_all(p->sf);
-            while (m && m->time < p->loop.start_ms)
-                m = m->next;
-            p->cur = m;
-            p->msec = p->loop.start_ms + over;
-        } else if (!p->cur && p->msec > p->length_ms + TAIL_MS) {
-            if (p->loop_on) { /* no loop markers: loop the whole piece */
-                tsf_note_off_all(p->sf);
-                p->cur = p->mid;
-                p->msec = 0.0;
-            } else {
-                p->playing = 0;
-            }
+        double ms = n * 1000.0 / p->rate;
+        if (!p->over) {
+            if (!msqAdvance(&p->pl, ms * 1000.0, &sink))
+                p->over = 1;
+            p->msec += ms;
+        } else if ((p->tail_ms += ms) > TAIL_MS) {
+            p->playing = 0; /* the game's slot stops at the end of a sequence too */
         }
         tsf_render_float(p->sf, out + (size_t)done * 2, n, 0);
         done += n;
     }
-    if (p->volume != 1.0f) {
-        int i;
-        for (i = 0; i < frames * 2; i++)
-            out[i] *= p->volume;
-    }
+    g = p->volume * p->track_gain;
+    if (g != 1.0f)
+        for (int i = 0; i < frames * 2; i++)
+            out[i] *= g;
 }
 
 /* ---- loading ------------------------------------------------------------------------ */
+/* The pack keeps the SoundFont in music/; an older export kept it at the root. */
+static void sf2_path(const char *dir, char *path, size_t n)
+{
+    filestamp fs;
+    snprintf(path, n, "%s/music/instruments.sf2", dir);
+    if (stamp_of(path, &fs) != 0)
+        snprintf(path, n, "%s/instruments.sf2", dir);
+}
+
 static int load_synth(const char *path, int rate, tsf **out)
 {
     int n;
@@ -351,17 +242,88 @@ static int load_synth(const char *path, int rate, tsf **out)
     return 0;
 }
 
-static int load_midi(const char *path, tml_message **mid, loopinfo *li)
+static MsqSeq *load_seq(const char *path, char *err, size_t errlen)
 {
     int n;
     unsigned char *d = read_file(path, &n);
-    if (!d)
-        return -1;
-    *mid = tml_load_memory(d, n);
-    if (*mid)
-        *li = scan_loops(d, n);
+    MsqSeq *s;
+    if (!d) {
+        snprintf(err, errlen, "cannot read");
+        return NULL;
+    }
+    s = msqLoad(d, (size_t)n, err, errlen);
     free(d);
-    return *mid ? 0 : -1;
+    return s;
+}
+
+/* music/music.json "default_volume": [..], one per track number; the game plays a track at (D / 32768)^2. 1 when absent. */
+static float track_gain(const char *dir, int track)
+{
+    char path[1024];
+    int n;
+    unsigned char *d, *d2;
+    const char *q;
+    float g = 1.0f;
+    snprintf(path, sizeof path, "%s/music/music.json", dir);
+    d = read_file(path, &n);
+    if (!d)
+        return g;
+    d2 = (unsigned char *)realloc(d, (size_t)n + 1);
+    if (!d2) {
+        free(d);
+        return g;
+    }
+    d = d2;
+    d[n] = 0;
+    q = strstr((const char *)d, "\"default_volume\"");
+    if (q && (q = strchr(q, '[')) != NULL) {
+        q++;
+        for (int i = 0; *q && *q != ']'; i++) {
+            char *e;
+            long v;
+            while (*q == ',' || *q == ' ' || *q == '\n' || *q == '\r' || *q == '\t')
+                q++;
+            v = strtol(q, &e, 10);
+            if (e == q)
+                break;
+            if (i == track) {
+                g = (float)(v / 32768.0);
+                g *= g;
+                break;
+            }
+            q = e;
+        }
+    }
+    free(d);
+    return g;
+}
+
+/* Takes `seq` (NULL clears). */
+static void player_set_seq(player *p, MsqSeq *seq)
+{
+    if (p->started)
+        msqStopPlayer(&p->pl);
+    p->started = 0;
+    if (p->seq)
+        msqFree(p->seq);
+    free(p->counts);
+    p->counts = NULL;
+    p->seq = seq;
+    p->length_ms = 0.0;
+    if (seq) {
+        p->counts = (uint8_t *)malloc((size_t)seq->ncounters + 1);
+        if (p->counts)
+            memcpy(p->counts, seq->counter_init, (size_t)seq->ncounters);
+        p->length_ms = straight_length_ms(seq);
+    }
+}
+
+static int count_forever(const MsqSeq *s, const uint8_t *counts)
+{
+    int n = 0;
+    for (int i = 0; i < s->ncounters; i++)
+        n += (counts ? counts[i] : s->counter_init[i]) == 255;
+    return n;
 }
 
 /* ---- --check ----------------------------------------------------------------------------- */
@@ -369,52 +331,37 @@ static int check_mode(const char *dir)
 {
     char path[1024];
     int t, bad = 0, nfiles = 0;
-    const char *banks[2] = {"instruments.sf2", "sfx.sf2"};
+    tsf *sf = NULL;
 
-    for (t = 0; t < 2; t++) {
-        int n;
-        unsigned char *d;
-        tsf *sf;
-        snprintf(path, sizeof path, "%s/%s", dir, banks[t]);
-        d = read_file(path, &n);
-        sf = d ? tsf_load_memory(d, n) : NULL;
-        if (!sf) {
-            printf("%s: LOAD FAILED\n", banks[t]);
-            bad++;
-        } else {
-            printf("%s: %d presets\n", banks[t], tsf_get_presetcount(sf));
-            tsf_close(sf);
-        }
-        free(d);
+    sf2_path(dir, path, sizeof path);
+    if (load_synth(path, 44100, &sf)) {
+        printf("instruments.sf2: LOAD FAILED (%s)\n", path);
+        bad++;
+    } else {
+        printf("instruments.sf2: %d presets\n", tsf_get_presetcount(sf));
+        tsf_close(sf);
     }
     for (t = 0; t < MAX_TRACKS; t++) {
-        int n, notes = 0, channels = 0, programs = 0, msgs = 0, tempos = 0;
-        unsigned first = 0, len = 0;
-        unsigned char *d;
-        tml_message *m, *p;
-        loopinfo li;
+        char err[160] = "";
+        filestamp fs;
+        MsqSeq *s;
+        int loops = 0;
         snprintf(path, sizeof path, "%s/music/track_%02d.mid", dir, t);
-        d = read_file(path, &n);
-        if (!d)
+        if (stamp_of(path, &fs) != 0)
             continue;
         nfiles++;
-        m = tml_load_memory(d, n);
-        if (!m) {
-            printf("track_%02d.mid: LOAD FAILED\n", t);
+        s = load_seq(path, err, sizeof err);
+        if (!s) {
+            printf("track_%02d.mid: LOAD FAILED (%s)\n", t, err);
             bad++;
-            free(d);
             continue;
         }
-        li = scan_loops(d, n);
-        tml_get_info(m, &channels, &programs, &notes, &first, &len);
-        for (p = m; p; p = p->next) {
-            msgs++;
-            tempos += p->type == TML_SET_TEMPO;
-        }
-        printf("track_%02d.mid: messages %d notes %d tempo %d channels %d programs %d length %.1f s loop %s\n", t, msgs,
-               notes, tempos, channels, programs, len / 1000.0, li.has_loop ? "yes" : "no");
-        tml_free(m);
-        free(d);
+        for (int k = 0; k < s->ntracks; k++)
+            loops += s->tracks[k].nloops;
+        printf("track_%02d.mid: tracks %d  loop starts %d  loop ends %d (%d forever)  unresolved %d  one pass %.1f s\n", t,
+               s->ntracks, loops, s->ncounters, count_forever(s, NULL), s->unresolved, straight_length_ms(s) / 1000.0);
+        bad += s->unresolved != 0;
+        msqFree(s);
     }
     printf("checked %d midi files, %d failures\n", nfiles, bad);
     return bad ? 1 : 0;
@@ -447,21 +394,25 @@ static int render_mode(const char *dir, int track, const char *wav_path, double 
     p.volume = 1.0f;
     p.loop_on = 1;
     p.playing = 1;
-    snprintf(path, sizeof path, "%s/instruments.sf2", dir);
+    sf2_path(dir, path, sizeof path);
     if (load_synth(path, rate, &p.sf)) {
         fprintf(stderr, "cannot load %s\n", path);
         return 1;
     }
     snprintf(path, sizeof path, "%s/music/track_%02d.mid", dir, track);
-    if (load_midi(path, &p.mid, &p.loop)) {
-        fprintf(stderr, "cannot load %s\n", path);
-        return 1;
+    {
+        char err[160] = "";
+        MsqSeq *seq = load_seq(path, err, sizeof err);
+        if (!seq) {
+            fprintf(stderr, "cannot load %s: %s\n", path, err);
+            return 1;
+        }
+        player_set_seq(&p, seq);
     }
-    p.length_ms = music_length_ms(p.mid);
-    p.cur = p.mid;
-    printf("track %d: %d presets, length %.1f s, loop %s (%.1f..%.1f s)\n", track, tsf_get_presetcount(p.sf),
-           p.length_ms / 1000.0, p.loop.has_loop ? "yes" : "no", p.loop.start_ms / 1000.0,
-           (p.loop.end_ms < 0 ? p.length_ms : p.loop.end_ms) / 1000.0);
+    p.track_gain = track_gain(dir, track);
+    seek(&p, 0.0);
+    printf("track %d: %d presets, one pass %.1f s, %d loop ends (%d forever), track gain %.3f\n", track,
+           tsf_get_presetcount(p.sf), p.length_ms / 1000.0, p.seq->ncounters, count_forever(p.seq, p.counts), p.track_gain);
 
     total = (long)(seconds * rate);
     buf = (float *)malloc((size_t)total * 2 * sizeof(float));
@@ -512,7 +463,7 @@ static int render_mode(const char *dir, int track, const char *wav_path, double 
     fwrite(pcm, 2, (size_t)total * 2, f);
     fclose(f);
     printf("wrote %s\n", wav_path);
-    tml_free(p.mid);
+    player_set_seq(&p, NULL);
     tsf_close(p.sf);
     free(buf);
     free(pcm);
@@ -558,19 +509,16 @@ static void scan_tracks(app *a)
 /* Load the current track from disk; restart from `ms` (0 = from the beginning). */
 static int open_track(app *a, double ms, int keep_playing)
 {
-    char path[1024];
-    tml_message *mid = NULL;
-    loopinfo li = {0, 0, -1};
+    char path[1024], err[160] = "";
+    MsqSeq *seq;
     filestamp fs;
 
     midi_path(a, path, sizeof path);
-    if (stamp_of(path, &fs) || load_midi(path, &mid, &li))
+    if (stamp_of(path, &fs) || (seq = load_seq(path, err, sizeof err)) == NULL)
         return -1;
     SDL_LockAudioDevice(a->dev);
-    tml_free(a->p.mid);
-    a->p.mid = mid;
-    a->p.loop = li;
-    a->p.length_ms = music_length_ms(mid);
+    player_set_seq(&a->p, seq);
+    a->p.track_gain = track_gain(a->dir, a->tracks[a->ti]);
     seek(&a->p, ms);
     a->p.playing = keep_playing;
     SDL_UnlockAudioDevice(a->dev);
@@ -583,7 +531,7 @@ static void poll_reload(app *a)
     char path[1024];
     filestamp fs;
 
-    snprintf(path, sizeof path, "%s/instruments.sf2", a->dir);
+    sf2_path(a->dir, path, sizeof path);
     if (stamp_of(path, &fs) == 0 && !stamp_eq(&fs, &a->sf_stamp)) {
         tsf *sf = NULL;
         if (load_synth(path, a->p.rate, &sf) == 0) {
@@ -591,7 +539,7 @@ static void poll_reload(app *a)
             SDL_LockAudioDevice(a->dev);
             old = a->p.sf;
             a->p.sf = sf;
-            replay_state(sf, a->p.mid, a->p.msec, &a->p.cur);
+            seek(&a->p, a->p.msec);
             SDL_UnlockAudioDevice(a->dev);
             tsf_close(old);
             a->sf_stamp = fs;
@@ -626,7 +574,7 @@ static void update_title(app *a, SDL_Window *w)
     fmt_time(t2, sizeof t2, len);
     snprintf(title, sizeof title, "midiplay  track_%02d.mid [%d/%d]  %s / %s  voices %d  loop %s%s  vol %d%%  %s",
              a->tracks[a->ti], a->ti + 1, a->ntracks, t1, t2, voices, a->p.loop_on ? "on" : "off",
-             a->p.loop.has_loop ? "" : " (no markers)", (int)lrintf(a->p.volume * 100.0f), a->p.playing ? "playing" : "stopped");
+             a->p.seq && count_forever(a->p.seq, a->p.counts) ? "" : " (plays once)", (int)lrintf(a->p.volume * 100.0f), a->p.playing ? "playing" : "stopped");
     SDL_SetWindowTitle(w, title);
 }
 
@@ -639,7 +587,7 @@ static void draw(app *a, SDL_Renderer *r)
     SDL_SetRenderDrawColor(r, 24, 26, 32, 255);
     SDL_RenderClear(r);
     SDL_LockAudioDevice(a->dev);
-    frac = a->p.length_ms > 0 ? a->p.msec / a->p.length_ms : 0;
+    frac = a->p.length_ms > 0 ? fmod(a->p.msec, a->p.length_ms) / a->p.length_ms : 0;
     SDL_UnlockAudioDevice(a->dev);
     if (frac > 1)
         frac = 1;
@@ -708,7 +656,7 @@ static int interactive(const char *dir, int first_track, int rate)
     }
     a.p.rate = have.freq;
 
-    snprintf(path, sizeof path, "%s/instruments.sf2", dir);
+    sf2_path(dir, path, sizeof path);
     if (stamp_of(path, &a.sf_stamp) || load_synth(path, a.p.rate, &a.p.sf)) {
         fprintf(stderr, "cannot load %s\n", path);
         return 1;
@@ -719,8 +667,8 @@ static int interactive(const char *dir, int first_track, int rate)
         fprintf(stderr, "cannot load the track\n");
         return 1;
     }
-    printf("playing track_%02d.mid  (%.1f s, loop markers %s)\n", a.tracks[a.ti], a.p.length_ms / 1000.0,
-           a.p.loop.has_loop ? "found" : "none");
+    printf("playing track_%02d.mid  (one pass %.1f s, %d loop ends)\n", a.tracks[a.ti], a.p.length_ms / 1000.0,
+           a.p.seq->ncounters);
     printf("keys: Right/N next  Left/P previous  R restart  Space stop/play  L loop  Up/Down volume  Q quit\n");
 
     win = SDL_CreateWindow("midiplay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 560, 72, 0);
@@ -757,15 +705,20 @@ static int interactive(const char *dir, int first_track, int rate)
                     break;
                 case SDLK_SPACE:
                     SDL_LockAudioDevice(a.dev);
+                    if (!a.p.playing && a.p.over)
+                        seek(&a.p, 0.0); /* the sequence had ended: play it again */
                     a.p.playing = !a.p.playing;
                     if (!a.p.playing)
                         tsf_note_off_all(a.p.sf);
                     SDL_UnlockAudioDevice(a.dev);
                     break;
-                case SDLK_l:
+                case SDLK_l: /* the loop counts apply from the start: restart the track */
                     SDL_LockAudioDevice(a.dev);
                     a.p.loop_on = !a.p.loop_on;
+                    seek(&a.p, 0.0);
+                    a.p.playing = 1;
                     SDL_UnlockAudioDevice(a.dev);
+                    printf("loop %s\n", a.p.loop_on ? "on (as in the game)" : "off (one straight pass)");
                     break;
                 default:
                     break;
@@ -807,7 +760,7 @@ static int interactive(const char *dir, int first_track, int rate)
     }
 
     SDL_CloseAudioDevice(a.dev);
-    tml_free(a.p.mid);
+    player_set_seq(&a.p, NULL);
     tsf_close(a.p.sf);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);

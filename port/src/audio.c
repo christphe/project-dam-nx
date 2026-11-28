@@ -11,12 +11,14 @@
 #include <SDL.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "platform.h"
 #include "system.h"
 #include "config.h"
 #include "audio.h"
 #include "audiotrace.h"
+#include "musicpack.h"
 #ifdef PORT
 #include "envflag.h"   /* cached getenv for hot-path probes */
 #endif
@@ -346,6 +348,17 @@ void audioSetNextBuffer(const s16 *buf, u32 len)
                 (unsigned)len, (unsigned)(g_MaxFrameSize * 4u));
         }
         return;
+    }
+
+    /* The music from the asset packs (musicpack.c) is added to the game's mix here, so the dump, the master volume
+     * and the device all get it. Nothing is added with GE_ROM_MUSIC=1 (the ROM sequence player is in the game's mix). */
+    {
+        static s16 musicBuf[8192 * 2];
+        if (buf && len && len <= sizeof(musicBuf)) {
+            memcpy(musicBuf, buf, len);
+            mpkMix(musicBuf, (int)(len / 4u));
+            buf = musicBuf;
+        }
     }
 
     if (s_audioDumpFile && buf && len) {

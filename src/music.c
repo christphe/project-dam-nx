@@ -11,6 +11,9 @@
 #include "romdata.h"
 #include "snd.h"
 #include <macro.h>
+#ifdef PORT
+#include "musicpack.h"
+#endif
 
 /**
  * EU .data, offset from start of data_seg : 0x3570
@@ -647,6 +650,9 @@ void musicSeqFileNew(RareALSeqBankFile *file, u8 *base)
  */
 void musicSeqPlayerInit(void)
 {
+#ifdef PORT
+    mpkActive(); /* reads GE_ROM_MUSIC once, before the audio threads run */
+#endif
     // guess at struct.
     ALSeqpSfxConfig sfxSeqpConfig; // sp 216-228
     ALBankFile *sfxBank; // sp 212
@@ -841,6 +847,10 @@ void musicSeqPlayerInit(void)
  */
 void musicTrack1Play(s32 track)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkPlay(0, track); return; }
+    mpkLogRequest("play", 0, track, 0);
+#endif
     u32 trackSizeBytes;
     struct music_struct_b thing;
     u8 *temp_a0;
@@ -907,6 +917,10 @@ void musicTrack1Play(s32 track)
  */
 void musicTrack1Stop(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkStop(0, &g_musicXTrack1Fade); return; }
+    mpkLogRequest("stop", 0, g_musicXTrack1CurrentTrackNum, 0);
+#endif
     if (g_sndBootswitchSound)
     {
         return;
@@ -931,6 +945,9 @@ void musicTrack1Stop(void)
  */
 u16 musicTrack1GetVolume(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) return (u16)mpkGetVolume(0);
+#endif
     return g_musicXTrack1Volume;
 }
 
@@ -942,6 +959,10 @@ u16 musicTrack1GetVolume(void)
  */
 void musicTrack1ApplySeqpVol(u16 volume)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkSetVolume(0, volume); return; }
+    mpkLogRequest("volume", 0, volume, 0);
+#endif
     u32 t1 = volume;
 
     g_musicXTrack1Volume = (u16)t1;
@@ -963,6 +984,10 @@ void musicTrack1ApplySeqpVol(u16 volume)
  */
 void musicTrack1SaveCurrentVolumeAsTrackDefault(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkSaveVolumeAsDefault(0); return; }
+    mpkLogRequest("savedefault", 0, g_musicXTrack1CurrentTrackNum, 0);
+#endif
     s32 i;
     
     g_musicDefaultTrackVolume[g_musicXTrack1CurrentTrackNum] = musicTrack1GetVolume();
@@ -984,6 +1009,10 @@ void musicTrack1SaveCurrentVolumeAsTrackDefault(void)
  */
 void musicTrack1FadeOut(f32 fadeTime)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkFadeOut(0, fadeTime, &g_musicXTrack1Fade); return; }
+    mpkLogRequest("fadeout", 0, (int)(fadeTime * 1000), 0);
+#endif
     if (g_musicXTrack1Fade >= MUSIC_FADESTATE_UNSET)
     {
         g_musicXTrack1PreFadeSavedVolume = musicTrack1GetVolume();
@@ -1006,6 +1035,10 @@ void musicTrack1FadeOut(f32 fadeTime)
  */
 void musicTrack1FadeIn(f32 fadeTime, u16 volume)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkFadeIn(0, fadeTime, volume, &g_musicXTrack1Fade); return; }
+    mpkLogRequest("fadein", 0, (int)(fadeTime * 1000), volume);
+#endif
     if (g_musicXTrack1Fade <= MUSIC_FADESTATE_UNSET)
     {
         alCSPPlay(g_musicXTrack1SeqPlayer);
@@ -1039,6 +1072,10 @@ void musicTrack1FadeIn(f32 fadeTime, u16 volume)
  */
 void musicTrack2Play(s32 track)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkPlay(1, track); return; }
+    mpkLogRequest("play", 1, track, 0);
+#endif
     u32 trackSizeBytes;
     struct music_struct_b thing;
     u8 *temp_a0;
@@ -1104,6 +1141,10 @@ void musicTrack2Play(s32 track)
  */
 void musicTrack2Stop(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkStop(1, &g_musicXTrack2Fade); return; }
+    mpkLogRequest("stop", 1, g_musicXTrack2CurrentTrackNum, 0);
+#endif
     if (g_sndBootswitchSound)
     {
         return;
@@ -1128,6 +1169,9 @@ void musicTrack2Stop(void)
  */
 u16 musicTrack2GetVolume(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) return (u16)mpkGetVolume(1);
+#endif
     return g_musicXTrack2Volume;
 }
 
@@ -1140,6 +1184,10 @@ u16 musicTrack2GetVolume(void)
  */
 void musicTrack2ApplySeqpVol(u16 volume)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkSetVolume(1, volume); return; }
+    mpkLogRequest("volume", 1, volume, 0);
+#endif
     u32 t1 = volume;
 
     g_musicXTrack2Volume = (u16)t1;
@@ -1160,6 +1208,10 @@ void musicTrack2ApplySeqpVol(u16 volume)
  */
 void musicTrack2SaveCurrentVolumeAsTrackDefault(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkSaveVolumeAsDefault(1); return; }
+    mpkLogRequest("savedefault", 1, g_musicXTrack2CurrentTrackNum, 0);
+#endif
     s32 i;
     
     g_musicDefaultTrackVolume[g_musicXTrack2CurrentTrackNum] = musicTrack2GetVolume();
@@ -1181,6 +1233,10 @@ void musicTrack2SaveCurrentVolumeAsTrackDefault(void)
  */
 void musicTrack2FadeOut(f32 fadeTime)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkFadeOut(1, fadeTime, &g_musicXTrack2Fade); return; }
+    mpkLogRequest("fadeout", 1, (int)(fadeTime * 1000), 0);
+#endif
     if (g_musicXTrack2Fade >= MUSIC_FADESTATE_UNSET)
     {
         g_musicXTrack2PreFadeSavedVolume = musicTrack2GetVolume();
@@ -1203,6 +1259,10 @@ void musicTrack2FadeOut(f32 fadeTime)
  */
 void musicTrack2FadeIn(f32 fadeTime, u16 volume)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkFadeIn(1, fadeTime, volume, &g_musicXTrack2Fade); return; }
+    mpkLogRequest("fadein", 1, (int)(fadeTime * 1000), volume);
+#endif
     if (g_musicXTrack2Fade <= MUSIC_FADESTATE_UNSET)
     {
         alCSPPlay(g_musicXTrack2SeqPlayer);
@@ -1236,6 +1296,10 @@ void musicTrack2FadeIn(f32 fadeTime, u16 volume)
  */
 void musicTrack3Play(s32 track)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkPlay(2, track); return; }
+    mpkLogRequest("play", 2, track, 0);
+#endif
     u32 trackSizeBytes;
     struct music_struct_b thing;
     u8 *temp_a0;
@@ -1301,6 +1365,10 @@ void musicTrack3Play(s32 track)
  */
 void musicTrack3Stop(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkStop(2, &g_musicXTrack3Fade); return; }
+    mpkLogRequest("stop", 2, g_musicXTrack3CurrentTrackNum, 0);
+#endif
     if (g_sndBootswitchSound)
     {
         return;
@@ -1325,6 +1393,9 @@ void musicTrack3Stop(void)
  */
 u16 musicTrack3GetVolume(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) return (u16)mpkGetVolume(2);
+#endif
     return g_musicXTrack3Volume;
 }
 
@@ -1337,6 +1408,10 @@ u16 musicTrack3GetVolume(void)
  */
 void musicTrack3ApplySeqpVol(u16 volume)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkSetVolume(2, volume); return; }
+    mpkLogRequest("volume", 2, volume, 0);
+#endif
     u32 t1 = volume;
 
     g_musicXTrack3Volume = (u16)t1;
@@ -1357,6 +1432,10 @@ void musicTrack3ApplySeqpVol(u16 volume)
  */
 void musicTrack3SaveCurrentVolumeAsTrackDefault(void)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkSaveVolumeAsDefault(2); return; }
+    mpkLogRequest("savedefault", 2, g_musicXTrack3CurrentTrackNum, 0);
+#endif
     s32 i;
     
     g_musicDefaultTrackVolume[g_musicXTrack3CurrentTrackNum] = musicTrack3GetVolume();
@@ -1378,6 +1457,10 @@ void musicTrack3SaveCurrentVolumeAsTrackDefault(void)
  */
 void musicTrack3FadeOut(f32 fadeTime)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkFadeOut(2, fadeTime, &g_musicXTrack3Fade); return; }
+    mpkLogRequest("fadeout", 2, (int)(fadeTime * 1000), 0);
+#endif
     if (g_musicXTrack3Fade >= MUSIC_FADESTATE_UNSET)
     {
         g_musicXTrack3PreFadeSavedVolume = musicTrack3GetVolume();
@@ -1400,6 +1483,10 @@ void musicTrack3FadeOut(f32 fadeTime)
  */
 void musicTrack3FadeIn(f32 fadeTime, u16 volume)
 {
+#ifdef PORT /* the music from the asset packs (port/src/musicpack.c); GE_ROM_MUSIC=1 keeps this path */
+    if (mpkActive()) { mpkFadeIn(2, fadeTime, volume, &g_musicXTrack3Fade); return; }
+    mpkLogRequest("fadein", 2, (int)(fadeTime * 1000), volume);
+#endif
     if (g_musicXTrack3Fade <= MUSIC_FADESTATE_UNSET)
     {
         alCSPPlay(g_musicXTrack3SeqPlayer);
@@ -1425,6 +1512,14 @@ void musicTrack3FadeIn(f32 fadeTime, u16 volume)
  */
 void musicFadeTick(void)
 {
+#ifdef PORT /* the music from the asset packs: the fades run in port/src/musicpack.c */
+    mpkRetrace();
+    if (mpkActive()) {
+        int *const st[3] = {&g_musicXTrack1Fade, &g_musicXTrack2Fade, &g_musicXTrack3Fade};
+        mpkFadeTick(st);
+        return;
+    }
+#endif
     if (g_musicXTrack1Fade)
     {
         u16 t0;

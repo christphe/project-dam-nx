@@ -269,6 +269,10 @@ static bool s_lr_armed = false;   /* G_DL calls are reported to levelExportOnDl 
 static int s_lr_unit = 0;         /* texture unit import_texture is filling (for the upload hook) */
 static void lr_note_vertices(size_t n, size_t dest, const Vtx* v);
 static void lr_note_upload(const uint8_t* rgba, uint32_t w, uint32_t h);
+/* Level decor from the asset packs (gfx_leveldecor.inc): GE_LDSTATS's ROM-path bracket counts the room list's triangles. */
+static bool s_ld_stat_on = false;
+static void ld_stat_vtx(size_t n, size_t dest, const Vtx* v);
+static void ld_stat_tri(uint8_t a, uint8_t b, uint8_t c);
 
 struct GfxDimensions gfx_current_window_dimensions;
 int32_t gfx_current_window_position_x;
@@ -4026,6 +4030,7 @@ static void gfx_sp_vertex(size_t n_vertices, size_t dest_index, const Vtx* verti
     }
 
     if (s_lr_on) lr_note_vertices(n_vertices, dest_index, vertices);   /* level export */
+    if (s_ld_stat_on) ld_stat_vtx(n_vertices, dest_index, vertices);   /* GE_LDSTATS */
 
     for (size_t i = 0; i < n_vertices; i++, dest_index++) {
         const Vtx* v = &vertices[i];
@@ -5306,6 +5311,7 @@ static inline void gfx_tri_emit(const TriState& ts, struct LoadedVertex* const* 
 
 #include "gfx_meshcache.inc"   /* issue #10: display-list mesh cache (GE_MESHCACHE=1) */
 #include "../levelrec/gfx_levelcap.inc"   /* issue #102: level export capture */
+#include "gfx_leveldecor.inc"   /* issue #171: the level decor from the asset packs (G_LEVELDECOR_EXT) */
 
 static void gfx_fx_marker(uintptr_t w1) {
     if (((uint32_t)w1 & PORTFX_TAG_MASK) != PORTFX_TAG_MAGIC) {
@@ -5348,6 +5354,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                                                : (vtx2_idx > vtx3_idx ? vtx2_idx : vtx3_idx);
         if (tri_dbg()) d75d_note_tri(videoGetFrameCount(), d75d_mx);
     }
+    if (s_ld_stat_on && !is_rect) ld_stat_tri(vtx1_idx, vtx2_idx, vtx3_idx);   /* GE_LDSTATS */
     if (s_mc_cap != nullptr && !is_rect) {   /* mesh cache: recording this display list */
         mc_cap_tri(vtx1_idx, vtx2_idx, vtx3_idx);
         return;
@@ -7046,6 +7053,9 @@ static void gfx_run_dl(Gfx* cmd) {
                 break;
             }
             case G_SHADOWCAST_EXT:   /* the prop draws' bracket (port/src/dynlights.c): nothing reads it yet */
+                break;
+            case G_LEVELDECOR_EXT:   /* leveldecor.h: a room list drawn from the asset packs (or GE_LDSTATS's ROM bracket) */
+                ld_marker(cmd->words.w0);
                 break;
             case G_RDPPIPESYNC:
             case G_RDPFULLSYNC:

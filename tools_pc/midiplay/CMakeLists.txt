@@ -19,8 +19,9 @@ if(NOT TARGET SDL2::SDL2)
   find_package(SDL2 REQUIRED)
 endif()
 
-add_executable(midiplay midiplay.c)
-target_include_directories(midiplay PRIVATE "${TSF_DIR}")
+# the game's own sequencer (pure C), so the loops play as in the game
+add_executable(midiplay midiplay.c "${CMAKE_CURRENT_SOURCE_DIR}/../../port/src/musicseq.c")
+target_include_directories(midiplay PRIVATE "${TSF_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../port/include")
 if(TARGET SDL2::SDL2)
   target_link_libraries(midiplay PRIVATE SDL2::SDL2)
 else()

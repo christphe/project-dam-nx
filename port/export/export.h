@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#define EX_EXPORTER_VERSION 13  /* written to every glTF (asset.extras.exporter_version); bump on any output change */
+#define EX_EXPORTER_VERSION 14  /* written to every glTF (asset.extras.exporter_version); bump on any output change */
 
 /* ---- textures (tex_decode.c, docs/specs/textures.md) --------------------- */
 

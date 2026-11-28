@@ -666,6 +666,7 @@ set(GE_RENDER_SYS_LIBS ${LIBS})   # SDL2, GL and the C++ runtime: what the rende
 # Port layer (shims + software RSP).
 file(GLOB_RECURSE SRC_PORT CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/port/src/*.c")
 file(GLOB_RECURSE SRC_PORT_CXX CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/port/src/*.cpp")
+list(FILTER SRC_PORT EXCLUDE REGEX "/port/src/leveldecor[.]c$")   # plain host C: its own target, ge_leveldecor (below)
 # Dear ImGui (MIT, vendored): the menu's widget layer. Core files only; the port draws it through
 # port/src/menu/imgui_gbi.cpp (no ImGui platform or renderer backend is used in the game).
 file(GLOB SRC_IMGUI CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/port/third_party/imgui/*.cpp")
@@ -1048,6 +1049,19 @@ else()
   add_executable(ge007 ${SRC_MAIN} $<TARGET_OBJECTS:ge007_core>)
   target_link_libraries(ge007 ${LIBS} ${GE_GAME_LINK_FLAGS})
 endif()
+# The level decor from the asset packs (issue #171, port/src/leveldecor.c): glTF (cgltf, vendored, MIT) -> room meshes. Plain
+# host C, its own target without the decomp's shadow headers (include/ has an N64 stdlib.h / math.h), like ge_mission.
+add_library(ge_leveldecor STATIC "${CMAKE_SOURCE_DIR}/port/src/leveldecor.c")
+set_property(TARGET ge_leveldecor PROPERTY INCLUDE_DIRECTORIES
+  "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/mission" "${CMAKE_SOURCE_DIR}/port/third_party/cgltf"
+  "${CMAKE_SOURCE_DIR}/port/third_party/cjson")
+set_property(TARGET ge_leveldecor PROPERTY COMPILE_OPTIONS "")
+target_link_libraries(ge_leveldecor PUBLIC ge_mission ge_assets)
+if(WIN32)
+  target_compile_definitions(ge_leveldecor PRIVATE "_CRTIMP=")   # as ge_mission: the game defines isalpha & co itself (src/str.c)
+endif()
+target_link_libraries(ge007 ge_leveldecor)
+list(APPEND GE_CORE_LIBS ge_leveldecor)
 target_link_libraries(ge007 ge_mission)   # port/mission/mission.cmake
 list(APPEND GE_CORE_LIBS ge_mission)
 set_target_properties(ge007 PROPERTIES OUTPUT_NAME "${BIN_NAME}")
