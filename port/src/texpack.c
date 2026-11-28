@@ -193,6 +193,19 @@ void texpackInit(void)
             assetPackEntriesFormat(files, on, n, s_cfgList, sizeof s_cfgList);
         }
     }
+    if (!s_cfgList[0]) {   /* no pack list at all (first launch, nothing ever chosen): every pack found is on. A list whose packs are all "-off" is not empty. */
+        static AssetPackInfo info[ASSETPACK_MAX * 2];
+        static char files[ASSETPACK_MAX][ASSETPACK_FILE_LEN];
+        int on[ASSETPACK_MAX], n = 0;
+        int found = assetPackScan(packsDirs(), 2, info, ASSETPACK_MAX * 2);
+        if (found > ASSETPACK_MAX * 2) found = ASSETPACK_MAX * 2;
+        for (int k = 0; k < found && n < ASSETPACK_MAX; k++) {
+            if (assetPackListFind(files, n, info[k].file) >= 0) continue;
+            snprintf(files[n], ASSETPACK_FILE_LEN, "%s", info[k].file);
+            on[n++] = 1;
+        }
+        assetPackEntriesFormat(files, on, n, s_cfgList, sizeof s_cfgList);
+    }
     snprintf(want, sizeof want, "%s", s_cfgList);
     if (want[0]) texpackSetPacks(want);
 }
