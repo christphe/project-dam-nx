@@ -63,15 +63,11 @@ typedef struct {
     uint32_t overlaps_track[16];   /* overlaps_cut per sequence track */
     uint32_t dead_loop_ends[16];   /* loop ends per sequence track that resolve to no loop start (dropped) */
     uint32_t length_ticks;  /* last event tick, including note-offs */
+    uint32_t injected_events; /* CC7 / CC10 / RPN 0 events written for the instruments' volume, pan and bend range */
     uint32_t first_tempo_us;/* 0 if no tempo event */
     uint32_t loop_start_tick, loop_end_tick; /* first marker of each kind */
     char warning[GE_AE_ERRLEN]; /* non-fatal oddity, empty if none */
 } ge_ae_music_stats;
-
-/* Convert music table entry `index`. Returns 0 = file written to *mid,
- * 1 = no data for this entry (stats left zero), -1 = error (err filled). */
-int ge_ae_music_convert(const uint8_t *rom, size_t size, const ge_ae_layout *lay, int index, ge_ae_buf *mid,
-                        ge_ae_music_stats *st, char *err);
 
 /* ---- sound banks -------------------------------------------------------- */
 typedef struct {
@@ -126,6 +122,13 @@ typedef struct {
 ge_ae_bank *ge_ae_bank_load(const uint8_t *rom, size_t size, uint32_t ctl_off, uint32_t ctl_size, uint32_t tbl_off,
                             uint32_t tbl_size, int sfx, char *err);
 void ge_ae_bank_free(ge_ae_bank *b);
+
+/* Convert music table entry `index` (declared here: it needs the bank type). With `bank` (the instrument bank) the MIDI
+ * carries each instrument's volume, pan and bend range as CC7, CC10 and RPN 0 after every program change and at the start
+ * for every channel (spec "Channel state, program change, pitch bend"); NULL leaves them out. Returns 0 = file written to
+ * *mid, 1 = no data for this entry (stats left zero), -1 = error (err filled). */
+int ge_ae_music_convert(const uint8_t *rom, size_t size, const ge_ae_layout *lay, const ge_ae_bank *bank, int index,
+                        ge_ae_buf *mid, ge_ae_music_stats *st, char *err);
 
 /* SoundFont 2.04: one preset (bank 0, number = instrument index) and one SF2
  * instrument per bank instrument; one zone per sound. 0 on success. */

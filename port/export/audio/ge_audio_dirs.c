@@ -78,8 +78,8 @@ static int write_music_json(const char *path)
     return ok ? 0 : -1;
 }
 
-static void export_music(const uint8_t *rom, size_t size, const ge_ae_layout *lay, int ntracks, const char *out_dir,
-                         FILE *rep)
+static void export_music(const uint8_t *rom, size_t size, const ge_ae_layout *lay, const ge_ae_bank *bank, int ntracks,
+                         const char *out_dir, FILE *rep)
 {
     int i, written = 0;
     char path[1024], err[GE_AE_ERRLEN], what[32], chg[200];
@@ -93,7 +93,7 @@ static void export_music(const uint8_t *rom, size_t size, const ge_ae_layout *la
     for (i = 0; i < ntracks; i++) {
         ge_ae_music_stats st;
         ge_ae_buf mid;
-        int rc = ge_ae_music_convert(rom, size, lay, i, &mid, &st, err);
+        int rc = ge_ae_music_convert(rom, size, lay, bank, i, &mid, &st, err);
         snprintf(what, sizeof what, "track %02d", i);
         if (rc == 1) {
             fprintf(rep, "track %02d: no data\n", i);
@@ -123,12 +123,12 @@ static void export_music(const uint8_t *rom, size_t size, const ge_ae_layout *la
         fprintf(rep,
                 "track %02d: usize=%u csize=%u tracks=%d division=%u events=%u notes=%u tempo_changes=%u "
                 "loopStart=%u loopEnd=%u unknown_metas=%u channels=0x%04X length_ticks=%u first_tempo_us=%u "
-                "loop_ticks=%u..%u smf_bytes=%zu overlaps_cut=%u ends_changed=%s%s%s\n",
+                "loop_ticks=%u..%u smf_bytes=%zu overlaps_cut=%u ends_changed=%s inst_events=%u%s%s\n",
                 i, (unsigned)st.usize, (unsigned)st.csize, st.tracks, (unsigned)st.division, (unsigned)st.events,
                 (unsigned)st.notes, (unsigned)st.tempo_changes, (unsigned)st.loop_starts, (unsigned)st.loop_ends,
                 (unsigned)st.unknown_metas, (unsigned)st.channel_mask, (unsigned)st.length_ticks,
                 (unsigned)st.first_tempo_us, (unsigned)st.loop_start_tick, (unsigned)st.loop_end_tick, mid.size,
-                (unsigned)st.overlaps_cut, chg, st.warning[0] ? " WARNING: " : "", st.warning);
+                (unsigned)st.overlaps_cut, chg, (unsigned)st.injected_events, st.warning[0] ? " WARNING: " : "", st.warning);
         {
             int q;
             for (q = 0; q < 16; q++) {
@@ -147,6 +147,42 @@ static void export_music(const uint8_t *rom, size_t size, const ge_ae_layout *la
     else
         fprintf(rep, "music: music.json written (%d default volumes)\n", GE_AE_MUSIC_DEFAULT_VOLUMES);
     fprintf(rep, "\n");
+}
+
+/* Once per export: the instruments whose bend range is not the default 200 cents, and the sounds with a finite decay (a
+ * decay time that is at least one 16-sample step at 22050 Hz and a decay volume below the attack volume, spec "Envelope
+ * shape"), so they can be compared with what the issue measured (bend 1200 on 71 and 73, 14 finite-decay instruments). */
+static void log_instrument_oddities(const ge_ae_bank *b, FILE *rep)
+{
+    int i, k, bends = 0, decays = 0, dinst = 0;
+    for (i = 0; i < b->ninst; i++) {
+        const ge_ae_inst *in = &b->inst[i];
+        int seen = 0;
+        if (!in->present)
+            continue;
+        if (in->bend_cents != 200) {
+            fprintf(rep, "bend range: instrument %d = %d cents\n", i, (int)in->bend_cents);
+            bends++;
+        }
+        for (k = 0; k < in->nsounds; k++) {
+            const ge_ae_sound *s = &in->sounds[k];
+            long samples;
+            if (!s->valid)
+                continue;
+            samples = (long)((double)s->decay_us * 22050.0 / 1e6 + 0.5);
+            samples &= ~15L;
+            if (s->decay_us > 0 && samples > 0 && s->decay_vol < s->attack_vol) {
+                fprintf(rep, "finite decay: instrument %d sound %d decay_us=%d attack_vol=%u decay_vol=%u\n", i, k,
+                        (int)s->decay_us, s->attack_vol, s->decay_vol);
+                decays++;
+                if (!seen)
+                    dinst++;
+                seen = 1;
+            }
+        }
+    }
+    fprintf(rep, "instruments: %d with a bend range other than 200 cents, %d finite-decay sounds in %d instruments\n", bends,
+            decays, dinst);
 }
 
 static void export_bank(const uint8_t *rom, size_t size, const char *label, uint32_t ctl, uint32_t ctl_size,
@@ -198,6 +234,8 @@ static void export_bank(const uint8_t *rom, size_t size, const char *label, uint
                     (int)s->release_us, s->attack_vol, s->decay_vol, s->vol, s->pan);
         }
     }
+    if (!sfx)
+        log_instrument_oddities(b, rep);
     fprintf(rep, "summary %s: instruments=%d sounds=%d waves=%d adpcm=%d raw=%d looped=%d sample_rate=%d peak=%d errors=%d\n",
             label, b->ninst, b->total_sounds, b->nwaves, b->adpcm_waves, b->raw_waves, b->looped_waves, b->sample_rate,
             maxpeak, b->errors);
@@ -273,8 +311,15 @@ static void export_bank(const uint8_t *rom, size_t size, const char *label, uint
 int ge_ae_export_dirs(const uint8_t *rom, size_t size, const ge_ae_layout *lay, int ntracks, const char *music_root,
                       const char *instruments_dir, const char *sfx_root, FILE *rep)
 {
+    ge_ae_bank *ibank;
+    char err[GE_AE_ERRLEN];
     g_errors = 0;
-    export_music(rom, size, lay, ntracks, music_root, rep);
+    /* the instrument bank is read for the music too: each instrument's volume, pan and bend range go into the MIDI files */
+    ibank = ge_ae_bank_load(rom, size, lay->ins_ctl, lay->ins_ctl_size, lay->ins_tbl, lay->ins_tbl_size, 0, err);
+    if (!ibank)
+        fprintf(rep, "music: instrument bank unreadable (%s): the MIDI files carry no CC7, CC10 or bend range\n", err);
+    export_music(rom, size, lay, ibank, ntracks, music_root, rep);
+    ge_ae_bank_free(ibank);
     export_bank(rom, size, "instruments", lay->ins_ctl, lay->ins_ctl_size, lay->ins_tbl, lay->ins_tbl_size, instruments_dir, 0, rep);
     export_bank(rom, size, "sfx", lay->sfx_ctl, lay->sfx_ctl_size, lay->sfx_tbl, lay->sfx_tbl_size, sfx_root, 1, rep);
     return g_errors;

@@ -30,6 +30,7 @@ Two classes:
 | `GE_ROM_SOUNDS=1` | `port/src/sounds.c:269` | Sound effects from the ROM's bank instead of the packs' `sounds/sfx/` (#171). | live tooling |
 | `GE_ROM_MUSIC=1` | `port/src/musicpack.c:101` | Music from the ROM sequence player instead of the packs' `music/` (MIDI + SoundFont through TinySoundFont). | live tooling |
 | `GE_MUSICLOG=1` | `port/src/musicpack.c:103` | One log line per music request (slot, play / stop / volume / fade, track), with the retrace count, in both music paths: compare the pack and the ROM path. | live tooling |
+| `GE_MUSICONLY=<track>` | `port/src/musicpack.c:713` | Music-only test mode: the first slot-1 play request of the run plays `<track>` and every other play request is dropped, in both music paths. Run with `GE_AUDIODUMP=1 GE_QUITFRAME=<n>`, once with and once without `GE_ROM_MUSIC=1`, and compare the dumps. | live tooling |
 | `GE_ROM_FONTS=1` | `port/src/fonts.c:225` | The fonts from the ROM instead of the packs' `fonts/` (#171). | live tooling |
 | `GE_FONTS_CHECK=1` | `port/src/fonts.c:232` | Compare the pack's fonts with the ROM's at the first font load and log the counts. | live tooling |
 | `GE_ROM_LEVELS=1` | `port/src/leveldecor.c` | The level's rooms from the ROM's display lists instead of the packs' `levels/<level>/<level>.gltf` (#171). | live tooling |

@@ -14,6 +14,7 @@ extern "C" {
 
 int mpkActive(void);                         /* 1 when the pack path is in use (GE_ROM_MUSIC unset) */
 void mpkPlay(int slot, int track);
+int mpkMusicOnly(int slot, int *track);      /* GE_MUSICONLY=<track> test mode: 1 = drop this play request, else *track is the track to play */
 void mpkStop(int slot, int *state);           /* state: the slot's fade state (-1 out, 0 none, 1 in), cleared */
 unsigned mpkGetVolume(int slot);
 void mpkSetVolume(int slot, unsigned v);     /* v 0..0x7FFF */

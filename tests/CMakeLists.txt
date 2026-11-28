@@ -57,10 +57,15 @@ target_compile_definitions(test_leveldecor PRIVATE LEVELDECOR_PURE_TEST)
 set_property(TARGET test_leveldecor PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/third_party/cgltf" "${CMAKE_SOURCE_DIR}/port/third_party/cjson")
 set_property(TARGET test_leveldecor PROPERTY COMPILE_OPTIONS "")   # plain host C: no shadow headers, no forced versioninfo.h (as ge_leveldecor)
 # The pack music (port/src/musicseq.c, musicpack.c): the sequencer, the slots and the stack reload, the asset stack stubbed.
-ge_add_pure_test(test_music test_music.c ${CMAKE_SOURCE_DIR}/port/src/musicseq.c ${CMAKE_SOURCE_DIR}/port/src/musicpack.c)
+ge_add_pure_test(test_music test_music.c ${CMAKE_SOURCE_DIR}/port/src/musicseq.c ${CMAKE_SOURCE_DIR}/port/src/musicpack.c ${CMAKE_SOURCE_DIR}/port/src/musicfx.c)
 target_compile_definitions(test_music PRIVATE MPK_PURE_TEST)
 set_property(TARGET test_music PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/assets")
 set_property(TARGET test_music PROPERTY COMPILE_OPTIONS "")   # plain host C: the N64 include/ stubs <stddef.h> and <stdlib.h> (D83)
+# The effect bus and level laws (port/src/musicfx.c) and the whole synth chain on a SoundFont built by the test.
+ge_add_pure_test(test_musicfx test_musicfx.c ${CMAKE_SOURCE_DIR}/port/src/musicseq.c ${CMAKE_SOURCE_DIR}/port/src/musicpack.c ${CMAKE_SOURCE_DIR}/port/src/musicfx.c)
+target_compile_definitions(test_musicfx PRIVATE MPK_PURE_TEST)
+set_property(TARGET test_musicfx PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/port/include" "${CMAKE_SOURCE_DIR}/port/assets")
+set_property(TARGET test_musicfx PROPERTY COMPILE_OPTIONS "")
 # CONSOLE mode precedence (port/include/console.h, header-only): pure, no core.
 ge_add_pure_test(test_console test_console.c)
 

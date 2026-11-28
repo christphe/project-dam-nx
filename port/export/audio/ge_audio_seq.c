@@ -449,6 +449,62 @@ done:
     return rc;
 }
 
+/* ---- the instrument's own channel state (spec "Channel state, program change, pitch bend") --------------------
+ * A program change sets the channel's volume (CC7), pan (CC10) and bend range from the instrument; the bank's first
+ * instrument does so for every channel at the start of the sequence. A MIDI file has to say it: CC7, CC10 and RPN 0
+ * (bend range: CC6 = semitones, CC38 = cents of the semitone) are written right after the program change. */
+static int push_inst_defaults(evvec *o, uint32_t tick, int ch, const ge_ae_inst *in)
+{
+    int range = in->bend_cents < 0 ? 0 : in->bend_cents, semi = range / 100, cents = range % 100;
+    uint8_t st = (uint8_t)(0xB0 | ch);
+    if (semi > 127)
+        semi = 127;
+    return ev_push(o, tick, K_CHAN, st, 7, (uint8_t)(in->vol & 0x7F), 0) ||
+           ev_push(o, tick, K_CHAN, st, 10, (uint8_t)(in->pan & 0x7F), 0) || ev_push(o, tick, K_CHAN, st, 101, 0, 0) ||
+           ev_push(o, tick, K_CHAN, st, 100, 0, 0) || ev_push(o, tick, K_CHAN, st, 6, (uint8_t)semi, 0) ||
+           ev_push(o, tick, K_CHAN, st, 38, (uint8_t)cents, 0);
+}
+
+static const ge_ae_inst *bank_inst(const ge_ae_bank *b, int n)
+{
+    return b && n >= 0 && n < b->ninst && b->inst[n].present ? &b->inst[n] : NULL;
+}
+
+/* Sorts `ev` into file order and inserts the defaults: after every program change to a present instrument, and at tick 0
+ * for the channels in `init_mask` (from instrument 0). Events keep their order (the sequence numbers are reassigned). */
+static int inject_inst_defaults(evvec *ev, const ge_ae_bank *b, unsigned init_mask, uint32_t *injected)
+{
+    evvec out = {0};
+    size_t i;
+    int ch;
+    const ge_ae_inst *i0 = bank_inst(b, 0);
+
+    qsort(ev->v, ev->n, sizeof *ev->v, ev_cmp);
+    for (ch = 0; ch < 16 && i0; ch++)
+        if ((init_mask >> ch) & 1) {
+            if (push_inst_defaults(&out, 0, ch, i0))
+                goto oom;
+            *injected += 6;
+        }
+    for (i = 0; i < ev->n; i++) {
+        const seq_event *e = &ev->v[i];
+        const ge_ae_inst *in;
+        if (ev_push(&out, e->tick, e->kind, e->status, e->d1, e->d2, e->val))
+            goto oom;
+        if (e->kind == K_CHAN && (e->status & 0xF0) == 0xC0 && (in = bank_inst(b, e->d1)) != NULL) {
+            if (push_inst_defaults(&out, e->tick, e->status & 0x0F, in))
+                goto oom;
+            *injected += 6;
+        }
+    }
+    free(ev->v);
+    *ev = out;
+    return 0;
+oom:
+    free(out.v);
+    return -1;
+}
+
 static int put_vlq(ge_ae_buf *b, uint32_t v)
 {
     uint8_t t[5];
@@ -536,8 +592,8 @@ static int write_mtrk(ge_ae_buf *out, evvec *ev, uint32_t end_tick, uint32_t *le
 }
 
 /* ---- entry point ------------------------------------------------------------------ */
-int ge_ae_music_convert(const uint8_t *rom, size_t size, const ge_ae_layout *lay, int index, ge_ae_buf *mid,
-                        ge_ae_music_stats *st, char *err)
+int ge_ae_music_convert(const uint8_t *rom, size_t size, const ge_ae_layout *lay, const ge_ae_bank *bank, int index,
+                        ge_ae_buf *mid, ge_ae_music_stats *st, char *err)
 {
     ge_view tab;
     int bad = 0, n, i, rc = -1;
@@ -650,6 +706,26 @@ int ge_ae_music_convert(const uint8_t *rom, size_t size, const ge_ae_layout *lay
             goto done;
         }
         st->overlaps_track[i] = st->overlaps_cut - cut0;
+    }
+
+    /* the instruments' volume, pan and bend range as CC7, CC10 and RPN 0 (needs the bank) */
+    if (bank) {
+        unsigned seen = 0;
+        for (i = 0; i < SEQ_MAX_TRACKS; i++) {
+            unsigned mask = 0;
+            size_t q;
+            if (!offsets[i])
+                continue;
+            for (q = 0; q < ev[i].n; q++)
+                if (ev[i].v[q].kind == K_CHAN)
+                    mask |= 1u << (ev[i].v[q].status & 0x0F);
+            /* the channels' state is the sequence's, not a track's: the first track with a channel carries its start values */
+            if (inject_inst_defaults(&ev[i], bank, mask & ~seen, &st->injected_events)) {
+                ge_seterr(err, "out of memory");
+                goto done;
+            }
+            seen |= mask;
+        }
     }
 
     /* SMF header + one MTrk per present sequence track */

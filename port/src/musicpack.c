@@ -28,12 +28,14 @@ static void SDL_UnlockMutex(SDL_mutex *m) { (void)m; }
 
 #include "musicpack.h"
 #include "musicseq.h"
+#include "musicfx.h"
 #include "texpack.h"
 #include "ge_pkg.h"
 #include "system.h"
 
 #define TSF_IMPLEMENTATION
 #define TSF_NO_STDIO
+#define TSF_LINEAR_AMP_ENVELOPE /* N64 decay and release are straight lines in amplitude (spec "Envelope shape") */
 /* the game's include/ holds an N64 math.h: the compiler's builtins instead */
 #define TSF_POW __builtin_pow
 #define TSF_POWF __builtin_powf
@@ -51,7 +53,12 @@ static void SDL_UnlockMutex(SDL_mutex *m) { (void)m; }
 #define MPK_BLOCK 16              /* events take effect on 16-sample boundaries */
 #define MPK_VOICES 64
 #define MPK_STOP_SAMPLES (MPK_RATE / 20)   /* the 50 ms release of a stop */
-#define MPK_BASE_GAIN_DB (-4.0f)  /* synth headroom: -level_09 and the title measured against the ROM path (GE_AUDIODUMP) */
+/* Base gain: a full-scale note (velocity, CC7, sample volume, envelope, slot volume at their maximum) reaches 0.9245 of its
+ * sample's peak at pan hard left or right (spec "Voice level"): 20 x log10(0.9245). The old -4 dB was a headroom guess for the
+ * unsquared laws. Calibrate against GE_AUDIODUMP RMS of the ROM path (D83) by changing this one constant. */
+#define MPK_BASE_GAIN_DB (-0.682f)
+/* Gain of the effect bus return (spec: unity, "calibrate the total wet gain against a capture"). One constant. */
+#define MPK_WET_GAIN 1.0f
 #define MPK_DEAD 8
 
 #ifdef REFRESH_PAL
@@ -62,22 +69,30 @@ static void SDL_UnlockMutex(SDL_mutex *m) { (void)m; }
 
 enum { ST_IDLE = 0, ST_PLAY, ST_STOPPING, ST_PAUSING, ST_PAUSED };
 
+/* One slot's synth: a TinySoundFont copy plus the channel state it does not keep. CC91 (effect send) and CC10 (pan) are
+ * applied per voice at render time (renderVoices): the synth has neither the N64's per-voice dry/wet send nor its pan law. */
+typedef struct {
+    tsf *t;
+    unsigned char cc91[16];
+    unsigned char cc10[16];
+} Syn;
+
 typedef struct {
     int track;                 /* current track number (0 none) */
     int v;                     /* the slot's volume 0..0x7FFF */
     int state;
     MsqSeq *seq;
-    tsf *syn;
+    Syn *syn;
     MsqPlayer pl;
     int playing;               /* the sequencer runs (has a sequence that did not end) */
     int stop_left;             /* samples left in a 50 ms release */
     MsqSeq *pend_seq;          /* to start once the release is over */
-    tsf *pend_syn;
+    Syn *pend_syn;
     int pend;
     float gain, gain_target;   /* (P / 32767)^2 */
     int fade_target, fade_prefade, fade_left;
     MsqSeq *dead_seq[MPK_DEAD];
-    tsf *dead_syn[MPK_DEAD];
+    Syn *dead_syn[MPK_DEAD];
 } Slot;
 
 static Slot sSlot[MPK_SLOTS];
@@ -90,6 +105,8 @@ static int sDefVol[MPK_TRACKS];
 static unsigned sRetraces;
 static unsigned char sMissingLogged[MPK_TRACKS + 1];
 static float sMixBuf[MPK_BLOCK * 2], sSlotBuf[MPK_BLOCK * 2];
+static float sAuxBuf[MPK_BLOCK * 2], sSlotAux[MPK_BLOCK * 2], sChanBuf[MPK_BLOCK * 2], sRet[MPK_BLOCK];
+static MpfxBus sBus;           /* the one effect bus, shared by the three slots; its tail outlives a stopped slot */
 
 static void init(void)
 {
@@ -103,6 +120,7 @@ static void init(void)
     e = getenv("GE_MUSICLOG");
     sLog = e && *e && *e != '0';
     sLock = SDL_CreateMutex();
+    mpfxBusInit(&sBus);
     for (i = 0; i < MPK_SLOTS; i++)
         sSlot[i].v = 0x7FFF;
     for (i = 0; i < MPK_TRACKS; i++)
@@ -230,26 +248,115 @@ static MsqSeq *loadTrack(int t)
 
 /* ---- the synth sink ------------------------------------------------------------------------------------------- */
 
-static void cbNoteOn(void *u, int ch, int key, int vel) { tsf_channel_note_on((tsf *)u, ch, key, vel / 127.0f); }
-static void cbNoteOff(void *u, int ch, int key) { tsf_channel_note_off((tsf *)u, ch, key); }
-static void cbControl(void *u, int ch, int cc, int v) { tsf_channel_midi_control((tsf *)u, ch, cc, v); }
-/* bank 0, program = instrument; not tsf_channel_set_presetnumber, which gives channel 10 the drum rules (the bank has none) */
-static void cbProgram(void *u, int ch, int p) { tsf_channel_set_bank_preset((tsf *)u, ch, 0, p); }
-static void cbBend(void *u, int ch, int v) { tsf_channel_set_pitchwheel((tsf *)u, ch, v); }
-
-static void synthInit(tsf *s)
+/* The N64 law squares velocity and CC7 (spec "Voice level"); the synth applies velocity linearly and CC7 cubed.
+ * velocity: the voice keeps the synth's own factor v/127 (so the velocity layer a sound is on is unchanged) and gets
+ *           one more factor v/127 here: (v/127)^2 in all.
+ * CC7: the synth channel volume is set to the 14-bit value m = round(16383 x (c/127)^(2/3)); its cube is (c/127)^2.
+ * The pure forms are mpfxVelocityExtra / mpfxCc7Fine (musicfx.c, unit-tested). */
+static void cbNoteOn(void *u, int ch, int key, int vel)
 {
+    Syn *y = (Syn *)u;
+    tsf *t = y->t;
+    unsigned before = t->voicePlayIndex;
+    struct tsf_voice *v, *vEnd;
+    tsf_channel_note_on(t, ch, key, vel / 127.0f);
+    if (t->voicePlayIndex == before || vel <= 0) /* no note was started */
+        return;
+    for (v = t->voices, vEnd = v + t->voiceNum; v != vEnd; v++)
+        if (v->playingPreset != -1 && v->playIndex == before)
+            v->noteGainDB += tsf_gainToDecibels(mpfxVelocityExtra(vel));
+}
+static void cbNoteOff(void *u, int ch, int key) { tsf_channel_note_off(((Syn *)u)->t, ch, key); }
+static void cbControl(void *u, int ch, int cc, int v)
+{
+    Syn *y = (Syn *)u;
+    if (cc == 91 && ch >= 0 && ch < 16) { /* the per-voice effect send */
+        y->cc91[ch] = (unsigned char)(v & 127);
+    } else if (cc == 10 && ch >= 0 && ch < 16) { /* the N64 pan law at render time */
+        y->cc10[ch] = (unsigned char)(v & 127);
+    } else if (cc == 7) {
+        int m = mpfxCc7Fine(v);
+        tsf_channel_midi_control(y->t, ch, 39, m & 127);
+        tsf_channel_midi_control(y->t, ch, 7, m >> 7);
+    } else {
+        tsf_channel_midi_control(y->t, ch, cc, v);
+    }
+}
+/* bank 0, program = instrument; not tsf_channel_set_presetnumber, which gives channel 10 the drum rules (the bank has none) */
+static void cbProgram(void *u, int ch, int p) { tsf_channel_set_bank_preset(((Syn *)u)->t, ch, 0, p); }
+static void cbBend(void *u, int ch, int v) { tsf_channel_set_pitchwheel(((Syn *)u)->t, ch, v); }
+
+static Syn *synNew(tsf *font)
+{
+    Syn *y = (Syn *)calloc(1, sizeof *y);
     int ch;
-    tsf_reset(s);
-    for (ch = 0; ch < 16; ch++)
-        tsf_channel_set_bank_preset(s, ch, 0, 0);
+    if (!y)
+        return NULL;
+    y->t = tsf_copy(font);
+    if (!y->t) {
+        free(y);
+        return NULL;
+    }
+    tsf_set_max_voices(y->t, MPK_VOICES);
+    tsf_reset(y->t);
+    for (ch = 0; ch < 16; ch++) {
+        tsf_channel_set_bank_preset(y->t, ch, 0, 0);
+        y->cc10[ch] = 64;
+    }
+    return y;
 }
 
-static void synthCut(tsf *s)
+static void synClose(Syn *y)
+{
+    if (!y)
+        return;
+    tsf_close(y->t);
+    free(y);
+}
+
+static void synthCut(Syn *y)
 {
     int ch;
     for (ch = 0; ch < 16; ch++)
-        tsf_channel_sounds_off_all(s, ch);
+        tsf_channel_sounds_off_all(y->t, ch);
+}
+
+/* One block of the synth's voices into dry (the main mix) and aux (the effect send), channel by channel: a channel whose
+ * CC91 is 0 (the common case) goes straight to dry; otherwise its voices are summed apart and split dry = cos(s pi/254),
+ * wet = sin(s pi/254) (constant power, 127 = no dry). Every voice also gets the N64 pan law (cos / sin of pan x pi/254,
+ * pan = CC10 + the sound's own offset, clamped) in place of the synth's square-root law. Uses the synth's voice list and
+ * renderer directly (same translation unit); tsf_render_float does the same walk without the split. */
+static void renderVoices(Syn *y, float *dry, float *aux, int n)
+{
+    tsf *t = y->t;
+    struct tsf_voice *v, *vEnd = t->voices + t->voiceNum;
+    int ch, i;
+    memset(dry, 0, sizeof(float) * 2 * n);
+    memset(aux, 0, sizeof(float) * 2 * n);
+    if (!t->voices)
+        return;
+    for (ch = 0; ch < 16; ch++) {
+        int s = y->cc91[ch], any = 0;
+        float *dst = s ? sChanBuf : dry;
+        for (v = t->voices; v != vEnd; v++) {
+            int pan;
+            if (v->playingPreset == -1 || v->playingChannel != ch)
+                continue;
+            if (!any && s)
+                memset(sChanBuf, 0, sizeof(float) * 2 * n);
+            any = 1;
+            pan = y->cc10[ch] + (int)(v->region->pan * 128.0f + (v->region->pan < 0 ? -0.5f : 0.5f));
+            mpfxPan(pan < 0 ? 0 : pan > 127 ? 127 : pan, &v->panFactorLeft, &v->panFactorRight);
+            tsf_voice_render(t, v, dst, n);
+        }
+        if (any && s) {
+            float dg = mpfxDry(s), wg = mpfxWet(s);
+            for (i = 0; i < 2 * n; i++) {
+                dry[i] += sChanBuf[i] * dg;
+                aux[i] += sChanBuf[i] * wg;
+            }
+        }
+    }
 }
 
 /* ---- slots (lock held) ---------------------------------------------------------------------------------------- */
@@ -262,7 +369,7 @@ static void applyVolume(Slot *s)
     s->gain_target = g * g;
 }
 
-static void park(Slot *s, MsqSeq *q, tsf *y)
+static void park(Slot *s, MsqSeq *q, Syn *y)
 {
     int i;
     for (i = 0; i < MPK_DEAD && (q || y); i++) {
@@ -299,7 +406,7 @@ static void releaseStart(Slot *s, int st)
     s->stop_left = MPK_STOP_SAMPLES;
 }
 
-static void drainDead(Slot *s, MsqSeq **q, tsf **y)
+static void drainDead(Slot *s, MsqSeq **q, Syn **y)
 {
     int i;
     for (i = 0; i < MPK_DEAD; i++) {
@@ -310,12 +417,12 @@ static void drainDead(Slot *s, MsqSeq **q, tsf **y)
     }
 }
 
-static void freeDead(MsqSeq **q, tsf **y)
+static void freeDead(MsqSeq **q, Syn **y)
 {
     int i;
     for (i = 0; i < MPK_DEAD; i++) {
         msqFree(q[i]);
-        tsf_close(y[i]);
+        synClose(y[i]);
     }
 }
 
@@ -330,7 +437,7 @@ void mpkPlay(int slot, int track)
 {
     Slot *s = slotOf(slot);
     MsqSeq *seq, *oldq[MPK_DEAD], *pq = NULL;
-    tsf *syn = NULL, *oldy[MPK_DEAD], *py = NULL;
+    Syn *syn = NULL, *oldy[MPK_DEAD], *py = NULL;
     init();
     if (!s)
         return;
@@ -338,10 +445,8 @@ void mpkPlay(int slot, int track)
     checkStack();
     seq = loadTrack(track);
     lock();
-    if (sFont && (syn = tsf_copy(sFont)) != NULL) {
-        tsf_set_max_voices(syn, MPK_VOICES);
-        synthInit(syn);
-    }
+    if (sFont)
+        syn = synNew(sFont);
     unlock();
     lock();
     drainDead(s, oldq, oldy);
@@ -364,7 +469,7 @@ void mpkPlay(int slot, int track)
     unlock();
     freeDead(oldq, oldy);
     msqFree(pq);
-    tsf_close(py);
+    synClose(py);
 }
 
 void mpkStop(int slot, int *state)
@@ -504,7 +609,7 @@ void mpkFadeTick(int *const state[3])
 
 /* ---- audio thread ---------------------------------------------------------------------------------------------- */
 
-static const MsqSink *sinkFor(tsf *y)
+static const MsqSink *sinkFor(Syn *y)
 {
     static MsqSink k;
     k.user = y;
@@ -516,7 +621,8 @@ static const MsqSink *sinkFor(tsf *y)
     return &k;
 }
 
-/* One block of slot s into sMixBuf. */
+/* One block of slot s: dry into sMixBuf, its effect send into sAuxBuf. The slot's volume (P squared) and the stop ramp sit
+ * in front of the dry/wet split, as on the N64, so both scale with them. */
 static void renderSlot(Slot *s, int n)
 {
     int i;
@@ -534,7 +640,7 @@ static void renderSlot(Slot *s, int n)
             return;
         }
     }
-    tsf_render_float(s->syn, sSlotBuf, n, 0);
+    renderVoices(s->syn, sSlotBuf, sSlotAux, n);
     if (s->state == ST_STOPPING || s->state == ST_PAUSING) {
         r0 = (float)s->stop_left / MPK_STOP_SAMPLES;
         s->stop_left -= n;
@@ -550,6 +656,8 @@ static void renderSlot(Slot *s, int n)
         float g = (g0 + (g1 - g0) * f) * (r0 + (r1 - r0) * f);
         sMixBuf[2 * i] += sSlotBuf[2 * i] * g;
         sMixBuf[2 * i + 1] += sSlotBuf[2 * i + 1] * g;
+        sAuxBuf[2 * i] += sSlotAux[2 * i] * g;
+        sAuxBuf[2 * i + 1] += sSlotAux[2 * i + 1] * g;
     }
     s->gain = g1;
     if ((s->state == ST_STOPPING || s->state == ST_PAUSING) && s->stop_left == 0) {
@@ -574,8 +682,16 @@ void mpkMix(short *buf, int frames)
     while (done < frames) {
         int n = frames - done > MPK_BLOCK ? MPK_BLOCK : frames - done;
         memset(sMixBuf, 0, sizeof sMixBuf);
+        memset(sAuxBuf, 0, sizeof sAuxBuf);
         for (k = 0; k < MPK_SLOTS; k++)
             renderSlot(&sSlot[k], n);
+        /* the bus runs every block, also with every slot silent: the tail of a stopped slot keeps ringing */
+        mpfxBusProcess(&sBus, sAuxBuf, sRet, n);
+        for (i = 0; i < n; i++) {
+            float r = sRet[i] * MPK_WET_GAIN;  /* added at unity to both channels */
+            sMixBuf[2 * i] += r;
+            sMixBuf[2 * i + 1] += r;
+        }
         for (i = 0; i < n * 2; i++) {
             int v = buf[done * 2 + i] + (int)(sMixBuf[i] * 32767.0f);
             buf[done * 2 + i] = (short)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
@@ -583,4 +699,26 @@ void mpkMix(short *buf, int frames)
         done += n;
     }
     unlock();
+}
+
+/* GE_MUSICONLY=<track>: a music-only test mode for comparing the pack player with the ROM player
+ * (GE_ROM_MUSIC=1), both through the game's own play requests. The first slot-1 play request of the
+ * run is replaced by <track>; every other play request, on any slot, is dropped. Run with
+ * GE_AUDIODUMP=1 and GE_QUITFRAME=<n>, once with and once without GE_ROM_MUSIC=1. Returns 1 when
+ * the request must be ignored; otherwise *track is the track to play. */
+int mpkMusicOnly(int slot, int *track)
+{
+    static int sMode = -2, sTrack, sStarted;
+    if (sMode == -2) {
+        const char *e = getenv("GE_MUSICONLY");
+        sMode = (e && *e) ? 1 : 0;
+        if (sMode) for (sTrack = 0; *e >= '0' && *e <= '9'; e++) sTrack = sTrack * 10 + (*e - '0');
+    }
+    if (!sMode)
+        return 0;
+    if (slot != 0 || sStarted)
+        return 1;
+    sStarted = 1;
+    *track = sTrack;
+    return 0;
 }

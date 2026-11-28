@@ -5,7 +5,8 @@
  * preset (bank 0, number = bank instrument index) per bank instrument, one
  * instrument zone per sound. The mapping of the bank's envelope / volume / pan
  * to SF2 generators is an approximation, all of it in ge_ae_map_sound() below
- * under the tuning constants.
+ * under the tuning constants (squared levels; the instrument volume / pan / bend
+ * range travel in the MIDI files).
  */
 #include <math.h>
 #include <stdlib.h>
@@ -62,17 +63,24 @@ static int us_to_timecents(double us)
     return clampi((int)lrint(1200.0 * log2(us / 1e6)), GE_AE_MIN_TIMECENTS, GE_AE_MAX_TIMECENTS);
 }
 
-/* The single place that turns the bank's per-sound parameters into SF2 values. */
+/* The single place that turns the bank's per-sound parameters into SF2 values. The N64 synth SQUARES every level factor
+ * (docs/specs/audio.md "Voice level", "Exporter consequence"): the sound's sample volume and attack volume enter the zone's
+ * attenuation as 40 x log10(ratio) dB, the sustain level below the attack peak is 40 x log10(decay vol / attack vol) dB.
+ * The instrument's own volume and pan are NOT in the zone: the MIDI carries them as CC7 and CC10 after each program change
+ * (a player applies the same laws to those). Velocity is applied by the synth. The decay time is the length of the
+ * straight-line segment from the peak to the sustain level (the player's linear amplitude envelope; a standard SF2 synth
+ * reads it as the time of a longer exponential fall: only the shape differs). */
 static void ge_ae_map_sound(const ge_ae_inst *in, const ge_ae_sound *s, zone_map *m)
 {
     double peak = s->attack_vol / 127.0;
-    double level = (in->vol / 127.0) * (s->vol / 127.0) * peak; /* velocity is applied by the synth */
+    double level = (s->vol / 127.0) * (s->vol / 127.0) * peak * peak;
     double sustain_ratio = s->attack_vol ? (double)s->decay_vol / (double)s->attack_vol : 1.0;
-    int pan = (in->pan - GE_AE_PAN_CENTRE) + (s->pan - GE_AE_PAN_CENTRE);
+    int pan = s->pan - GE_AE_PAN_CENTRE;
     double decay_us = s->decay_us * GE_AE_DECAY_TIME_SCALE;
 
+    (void)in;
     m->attenuation_cb = clampi(gain_to_cb(level) + GE_AE_BASE_ATTENUATION_CB, 0, GE_AE_MAX_ATTENUATION_CB);
-    m->sustain_cb = gain_to_cb(sustain_ratio > 1.0 ? 1.0 : sustain_ratio);
+    m->sustain_cb = gain_to_cb(sustain_ratio > 1.0 ? 1.0 : sustain_ratio * sustain_ratio);
 #if GE_AE_DECAY_SCALE_TO_100DB
     if (m->sustain_cb > 0)
         decay_us = decay_us * 1000.0 / m->sustain_cb;
