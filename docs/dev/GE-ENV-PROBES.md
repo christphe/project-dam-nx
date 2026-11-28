@@ -28,6 +28,8 @@ Two classes:
 | `GE_ROM_LABELS=1` | `port/src/labels.c:187` | The game's text from the ROM's language banks instead of the packs' `labels/` (#171). | live tooling |
 | `GE_LABELS_CHECK=1` | `port/src/labels.c:193` | Compare each language bank the game loads with the pack's strings and log the counts. | live tooling |
 | `GE_ROM_SOUNDS=1` | `port/src/sounds.c:269` | Sound effects from the ROM's bank instead of the packs' `sounds/sfx/` (#171). | live tooling |
+| `GE_ROM_MUSIC=1` | `port/src/musicpack.c:101` | Music from the ROM sequence player instead of the packs' `music/` (MIDI + SoundFont through TinySoundFont). | live tooling |
+| `GE_MUSICLOG=1` | `port/src/musicpack.c:103` | One log line per music request (slot, play / stop / volume / fade, track), with the retrace count, in both music paths: compare the pack and the ROM path. | live tooling |
 | `GE_ROM_FONTS=1` | `port/src/fonts.c:225` | The fonts from the ROM instead of the packs' `fonts/` (#171). | live tooling |
 | `GE_FONTS_CHECK=1` | `port/src/fonts.c:232` | Compare the pack's fonts with the ROM's at the first font load and log the counts. | live tooling |
 | `GE_ROM_LEVELS=1` | `port/src/leveldecor.c` | The level's rooms from the ROM's display lists instead of the packs' `levels/<level>/<level>.gltf` (#171). | live tooling |
