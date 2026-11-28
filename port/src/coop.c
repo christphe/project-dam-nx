@@ -446,99 +446,6 @@ static int coopNearestLiving(const struct ChrRecord *chr, int fallback)
     return best < 0 ? fallback : best;
 }
 
-/* The AI interpreter (chrai.c) calls this at the top of every step. A command that tests "Bond" runs as the current
- * player; when it falls through (false) it is run again as the other living player, and if that one satisfies it the
- * script goes on as that player (so a trigger fires when EITHER player is at the exit pad / below the dam / holds the
- * item, and what the script then locks, moves or fades is that player). If nobody satisfies it the original player is
- * back. offset is the interpreter's Offset; the return value is the (possibly rewound) Offset. */
-static int s_inAi;
-static struct { void *list; s32 off; int result; } s_aiLog[128];
-
-static void coopLogTest(void *list, s32 off, int result, int player)
-{
-    int i, slot = -1;
-    for (i = 0; i < 128; i++) {
-        if (s_aiLog[i].list == list && s_aiLog[i].off == off) {
-            slot = i;
-            break;
-        }
-        if (slot < 0 && s_aiLog[i].list == NULL) {
-            slot = i;
-        }
-    }
-    if (slot < 0) {
-        return;   /* table full: stay silent rather than flood the log */
-    }
-    if (s_aiLog[slot].list == list && s_aiLog[slot].off == off && s_aiLog[slot].result == result) {
-        return;
-    }
-    s_aiLog[slot].list = list;
-    s_aiLog[slot].off = off;
-    s_aiLog[slot].result = result;
-    sysLogPrintf(LOG_NOTE, "coop: ai player test list=%p offset=%d cmd=%d result=%d player=%d (alive %d/%d/%d/%d)", list, (int)off,
-                 (int)((u8 *)list)[off], result, player,
-                 g_playerPointers[0] ? g_playerPointers[0]->bonddead == 0 : -1,
-                 g_playerPointers[1] ? g_playerPointers[1]->bonddead == 0 : -1,
-                 g_playerPointers[2] ? g_playerPointers[2]->bonddead == 0 : -1,
-                 g_playerPointers[3] ? g_playerPointers[3]->bonddead == 0 : -1);
-}
-static struct { int pending, rewound, orig; void *list; s32 off; unsigned tried; } s_ai;
-extern s32 chraiitemsize(u8 *AIList, s32 offset);
-
-s32 coopAiStep(void *list, s32 offset, s32 isPlayerTest)
-{
-    if (!s_active || !s_inAi) {
-        return offset;
-    }
-    if (s_ai.pending) {
-        if (s_ai.rewound) {          /* this step is the retry itself */
-            s_ai.rewound = 0;
-            return offset;
-        }
-        if (list == s_ai.list && offset == s_ai.off + chraiitemsize((u8 *)s_ai.list, s_ai.off)) {   /* it fell through: false */
-            int n;
-            for (n = 0; n < coopN(); n++) {
-                struct player *p = g_playerPointers[n];
-                if (!(s_ai.tried & (1u << n)) && p != NULL && p->prop != NULL && p->bonddead == 0) {
-                    s_ai.tried |= 1u << n;
-                    set_cur_player(n);
-                    s_ai.rewound = 1;
-                    return s_ai.off;
-                }
-            }
-            set_cur_player(s_ai.orig);   /* nobody satisfies it */
-            coopLogTest(s_ai.list, s_ai.off, 0, s_ai.orig);
-        } else {
-            coopLogTest(s_ai.list, s_ai.off, 1, get_cur_playernum());   /* jumped: true for the current player */
-        }
-        s_ai.pending = 0;
-    }
-    if (isPlayerTest) {
-        /* "Bond fell below height Y" (Dam's jump, then the exit camera): ask the LOWEST living player first. Asked in
-         * player order, a partner standing low on the ground passed it at once, became the cinematic driver, and the
-         * exit camera aimed at him from the jump platform, into the void. */
-        if (((u8 *)list)[offset] == if_bond_y_pos_less_than_ID) {
-            int n, low = -1;
-            for (n = 0; n < coopN(); n++) {
-                struct player *p = g_playerPointers[n];
-                if (p != NULL && p->prop != NULL && p->bonddead == 0 &&
-                    (low < 0 || p->prop->pos.f[1] < g_playerPointers[low]->prop->pos.f[1])) {
-                    low = n;
-                }
-            }
-            if (low >= 0 && low != get_cur_playernum()) {
-                set_cur_player(low);
-            }
-        }
-        s_ai.pending = 1;
-        s_ai.rewound = 0;
-        s_ai.list = list;
-        s_ai.off = offset;
-        s_ai.orig = get_cur_playernum();
-        s_ai.tried = 1u << get_cur_playernum();
-    }
-    return offset;
-}
 
 /*
  * Which player is "Bond" for an NPC's tick. Enemies: the nearest living player, as before. An ESCORT (Natalya, the one ally
@@ -611,11 +518,7 @@ void coopAiTick(struct ChrRecord *chr, s32 perView)
     if (target != save) {
         set_cur_player(target);
     }
-    s_ai.pending = 0;
-    s_inAi = 1;
     chrlvActionTick(chr);
-    s_inAi = 0;
-    s_ai.pending = 0;
     target = get_cur_playernum();   /* the player the script ended up acting as (a test may have switched it) */
     /* A scripted sequence (mission end: lock, walk, fall, fade, camera shots) tests and moves "Bond" over MANY ticks,
      * so it must see the same player in all of them. The first tick after which a cinematic is running belongs to

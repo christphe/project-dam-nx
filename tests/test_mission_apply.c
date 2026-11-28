@@ -404,8 +404,8 @@ static void test_weapons(void)
     missionApplyFree(&r);
 }
 
-/* "level_ai": false empties every list of the AI list table (16-byte PC entries, a 0 offset ends it); the default
- * leaves them alone. */
+/* "level_ai": false is accepted and ignored: the game has no native AI interpreter any more, so applying a mission
+ * leaves the AI list table alone either way (the key stays so that existing missions load). */
 static void test_level_ai(void)
 {
     enum { AITBL = 0xC00, L0 = 0xD00, L1 = 0xD10 };
@@ -432,17 +432,16 @@ static void test_level_ai(void)
     GE_CHECK(m != NULL);
     GE_CHECK_EQ_INT(m->level_ai_off, 1);
     GE_CHECK_EQ_INT(missionApplySetup(m, g_file, g_size, -1, 1.0f, &r, err, sizeof err), 1);
-    GE_CHECK_EQ_INT(r.data[L0], 0x04);
-    GE_CHECK_EQ_INT(r.data[L0 + 1], 0x05);   /* only the first byte: the list ends at once */
-    GE_CHECK_EQ_INT(r.data[L1], 0x04);
-    GE_CHECK_EQ_INT((int)rd32(r.data + AITBL + 8), 0x401);   /* ids untouched */
+    GE_CHECK_EQ_INT(r.data[L0], 0x20);       /* untouched */
+    GE_CHECK_EQ_INT(r.data[L1], 0x03);
+    GE_CHECK_EQ_INT((int)rd32(r.data + AITBL + 8), 0x401);
     missionApplyFree(&r);
 
     GE_CHECK(load("{ \"format\": 1, \"name\": \"t\", \"level\": \"bunker1\", \"level_ai\": 0 }\n") == NULL);
 }
 
-/* "level_intro": false drops the swirl (3), intro animation (4) and camera (6) records from the intro stream and
- * keeps the others in order, END last. */
+/* "level_intro": false is accepted and ignored: the game has no native intro any more, so the intro stream (spawn, items,
+ * cameras, swirl, animation) is left as it is and nothing reads the cameras or the swirl. */
 static void test_level_intro(void)
 {
     enum { IN = 0xA00 };
@@ -466,9 +465,8 @@ static void test_level_intro(void)
     GE_CHECK_EQ_INT(missionApplySetup(m, g_file, g_size, -1, 1.0f, &r, err, sizeof err), 1);
     GE_CHECK_EQ_INT((int)rd32(r.data + IN), 0);          /* spawn kept */
     GE_CHECK_EQ_INT((int)rd32(r.data + IN + 4), 1);
-    GE_CHECK_EQ_INT((int)rd32(r.data + IN + 12), 1);     /* item next: the camera is gone */
-    GE_CHECK_EQ_INT((int)rd32(r.data + IN + 16), 8);
-    GE_CHECK_EQ_INT((int)rd32(r.data + IN + 28), 9);     /* END right after: swirl and animation gone */
+    GE_CHECK_EQ_INT((int)rd32(r.data + IN + 12), 6);     /* the camera record is still there: the key is ignored, the */
+    GE_CHECK_EQ_INT((int)rd32(r.data + IN + 16), 0x1234);   /* game does not read intro cameras or swirls any more */
     missionApplyFree(&r);
 
     m = load("{ \"format\": 1, \"name\": \"t\", \"level\": \"bunker1\" }\n");

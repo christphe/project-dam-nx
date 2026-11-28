@@ -439,41 +439,6 @@ int missionApplySetupEx(const Mission *m_, const uint8_t *in, uint32_t insize, i
         if (!done_) { logf_(out, "spawn: no spawn record, pad %d ignored", spawn_pad); out->skipped++; }
     }
 
-    /* "level_intro": false (#165): the intro stream (header word 2: typed records, END = 9) is compacted in place
-     * without its swirl points (3), intro animation (4) and fixed cameras (6). The game then has no intro camera
-     * (g_CurrentSetupIntroCamera stays NULL) and no swirl (g_IntroSwirl 0): the level starts in play, and the
-     * mission's script stages the intro. Spawn, items, ammo, outfit, watch time and credits are kept. */
-    if (m->level_intro_off && H[2]) {
-        uint32_t o = H[2], w = H[2];
-        int dropped = 0;
-        for (int g = 0; g < 5000 && o + 4 <= insize; g++) {
-            uint32_t t = rd32(buf + o), sz;
-            if (t > 9) break;
-            sz = kIntroSz[t];
-            if (o + sz > insize) break;
-            if (t == 3 || t == 4 || t == 6) { dropped++; o += sz; continue; }
-            if (w != o) memmove(buf + w, buf + o, sz);
-            w += sz;
-            o += sz;
-            if (t == 9) break;
-        }
-        logf_(out, "level_intro: false: %d intro record(s) removed", dropped);
-    }
-
-    /* "level_ai": false (#165): every list of the AI list table starts with the list-end opcode, so a guard, vehicle
-     * or background list that the setup names runs nothing. The table and the lists stay where they are: ids still
-     * resolve, and a script can still hand a guard a GLOBAL list. The PC setup widens each entry to 16 bytes
-     * (port/convert/conv_d88.c: the list's file offset at +0 in a 64-bit slot, the id at +8), until a 0 offset. */
-    if (m->level_ai_off && H[5]) {
-        int nlists = 0;
-        for (uint32_t o = H[5]; o + 16 <= insize; o += 16) {
-            uint32_t lo = rd32(buf + o);
-            if (!lo) break;
-            if (lo < insize) { buf[lo] = 0x04; nlists++; }
-        }
-        logf_(out, "level_ai: false: %d AI lists emptied", nlists);
-    }
-
     out->data = buf;
     out->size = total;
     buf = NULL;

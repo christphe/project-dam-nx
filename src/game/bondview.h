@@ -2566,7 +2566,6 @@ extern f32 camera_transition_timer;
 //D:800364A8
 extern s32 intro_camera_index;
 //D:800364AC
-extern struct SetupIntroSwirl *g_IntroSwirl;
 //D:800364B0
 extern s32 is_timer_active;
 //D:800364B4
@@ -2576,11 +2575,8 @@ extern s32 is_timer_active;
  */
 extern bool g_PlayerInvincible;
 //D:800364B8
-extern struct SetupIntroCamera* g_CurrentSetupIntroCamera;
 //D:800364BC
-extern s32 g_SetupIntroCameraCount;
 //D:800364C0
-extern struct SetupIntroCamera *ptr_random06cam_entry;
 //D:800364C4
 extern s32 g_VisibleToGuardsFlag;
 //D:800364C8

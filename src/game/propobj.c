@@ -5528,8 +5528,6 @@ s32 objTick(struct PropRecord *prop)
 			targetYaw = poTruck->roty;
 			waypointPosition = NULL;
 
-			ai((PropDefHeaderRecord *) poTruck, 1);
-
 			if (poTruck->speedtime60 >= 0.0f)
 			{
 				if (poTruck->speedtime60 <= g_GlobalTimerDelta)
@@ -5733,8 +5731,6 @@ s32 objTick(struct PropRecord *prop)
 		else if (obj->type == PROPDEF_AIRCRAFT)
 		{
 			render_pad2F4 = (struct AircraftRecord *) obj;
-
-			ai((PropDefHeaderRecord *) render_pad2F4, 1);
 
 			temp_s0_6 = render_pad2F4->model;
 

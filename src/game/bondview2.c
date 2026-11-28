@@ -848,28 +848,9 @@ void bondviewSetCameraMode(s32 arg0)
     g_CameraMode = arg0;
     g_CameraAfterCinema = 0;
 
-#ifdef PORT
-    if (getenv("GE_D160")) {
-        osSyncPrintf("D160: bondviewSetCameraMode(%d) stage=%d IntroSwirl=%d introAnimIdx=%d caller=%p\n",
-                     (int)arg0, (int)bossGetStageNum(), (int)g_IntroSwirl,
-                     (int)g_IntroAnimationIndex, __builtin_return_address(0));
-    }
-#endif
-
     if (g_CameraMode == CAMERAMODE_INTRO)
     {
-        if (ptr_random06cam_entry != NULL)
-        {
-            camera_transition_timer = 0.0f;
-            currentPlayerSetFadeColour(0, 0, 0, 1.0f);
-            currentPlayerSetFadeFrac(60.0f, 0.0f);
-            fogLoadLevelEnvironment(bossGetStageNum(), 1);
-            g_CurrentPlayer->cameratile = NULL;
-        }
-        else
-        {
-            bondviewSetCameraMode(CAMERAMODE_SWIRL);
-        }
+        bondviewSetCameraMode(CAMERAMODE_SWIRL);
     }
     else if (g_CameraMode == CAMERAMODE_FADESWIRL)
     {
@@ -897,45 +878,7 @@ void bondviewSetCameraMode(s32 arg0)
         currentPlayerSetFadeFrac(60.0f, 0.0f);
         fogLoadLevelEnvironment(bossGetStageNum(), 0);
 
-        if (g_IntroSwirl != 0)
-        {
-            camera_transition_timer = 0.0f;
-            intro_camera_index = CAMERAMODE_INTRO;
-            currentPlayerStartChrFade(0.0f, 1.0f);
-            solo_char_load();
-
-            // HACK: ptr_animation_table->data regalloc is backwards
-#ifdef PORT
-            sp38 = (struct ModelAnimation *)((s32)stage_intro_anim_table[g_IntroAnimationIndex].anonymous_0 + (uintptr_t)&ptr_animation_table->data);
-#else
-            sp38 = (struct ModelAnimation *)((s32)stage_intro_anim_table[g_IntroAnimationIndex].anonymous_0 + (s32)&ptr_animation_table->data);
-#endif
-            sp78 = stage_intro_anim_table[g_IntroAnimationIndex].anonymous_2;
-            ftemp_1 = stage_intro_anim_table[g_IntroAnimationIndex].anonymous_1;
-            ftemp_3 = stage_intro_anim_table[g_IntroAnimationIndex].anonymous_3;
-
-            modelSetAnimation(
-                g_CurrentPlayer->bodyModel,
-                sp38,
-                0,
-                ftemp_1,
-                ftemp_3,
-                0.0f);
-
-            if (sp78 > 0.0f)
-            {
-                modelSetAnimEndFrame(g_CurrentPlayer->bodyModel, sp78);
-            }
-
-            temp_v1 = g_CurrentPlayer->prop->chr;
-            temp_v1->actiontype = ACT_BONDINTRO;
-            temp_v1->sleep = 0;
-            g_CurrentPlayer->cameratile = NULL;
-        }
-        else
-        {
-            bondviewSetCameraMode(CAMERAMODE_FP);
-        }
+        bondviewSetCameraMode(CAMERAMODE_FP);
     }
     else if (g_CameraMode == CAMERAMODE_FP)
     {
@@ -1147,143 +1090,6 @@ void bondviewAdvanceCameraMode(void)
 }
 
 
-/**
- * Smoothly interpolate the camera between the points on the intro swirl path.
- */
-void bondviewCalcIntroSwirlCamera(s32 index, f32 time, coord3d *pos, coord3d *lookat)
-{
-    struct SetupIntroSwirl *base;
-    struct SetupIntroSwirl *loopbase;
-#if defined(PORT)
-    /* MACOS-ADDR-WINDOW: written pointbuf[0..11] via `&pointbuf[i*3]` then dst[3..5]
-     * (i = -1..2), but declared [10] -- a 2-float stack overrun that on arm64
-     * corrupts the saved frame pointer (Fp=0x374d56eac1a00000 at the fault).
-     * N64/MinGW absorb it; give it room on the port. */
-    f32 pointbuf[12];
-#else
-    f32 pointbuf[10];
-#endif
-    struct SetupIntroSwirl *swirl;
-    f32 frac;
-    f32 *dst;
-
-    base = g_IntroSwirl;
-    swirl = base;
-    swirl += index;
-    frac = 0.0f;
-
-    if (swirl->duration.fval > 0.0f)
-    {
-        frac = time / swirl->duration.fval;
-    }
-
-    {
-        struct SetupIntroSwirl *entry;
-        union {
-            struct SetupIntroSwirl *swirl;
-            struct player *player;
-        } target;
-        s32 i;
-
-        loopbase = base + (u32) index;
-
-        for (i = -1; i < 3; i++)
-        {
-            entry = loopbase;
-            loopbase = base + (u32) index;
-            target.swirl = entry + i;
-            dst = &pointbuf[i * 3];
-
-            if (i < 0)
-            {
-                if (target.swirl < base)
-                {
-                    entry = base;
-                }
-                else
-                {
-                    entry = target.swirl;
-                }
-            }
-            else
-            {
-                while (entry < target.swirl)
-                {
-                    if (entry[1].bitflags & 1)
-                    {
-                        break;
-                    }
-
-                    entry++;
-                }
-            }
-
-            if (entry->bitflags & 2)
-            {
-                target.player = g_CurrentPlayer;
-                dst[3] = (entry->offsetfromBond[2].fval * target.player->field_488.theta_transform.f[0])
-                    + (entry->offsetfromBond[0].fval * target.player->field_488.theta_transform.f[2]);
-                dst[4] = entry->offsetfromBond[1].fval;
-                dst[5] = (entry->offsetfromBond[2].fval * target.player->field_488.theta_transform.f[2])
-                    - (entry->offsetfromBond[0].fval * target.player->field_488.theta_transform.f[0]);
-            }
-            else
-            {
-                dst[3] = entry->offsetfromBond[0].fval;
-                dst[4] = entry->offsetfromBond[1].fval;
-                dst[5] = entry->offsetfromBond[2].fval;
-            }
-        }
-    }
-
-    {
-        f32 scale;
-
-        base = swirl;
-        scale = base->scale.fval;
-        base = (void *)(index << 5);
-
-        coord3dCubicSplineInterp((coord3d *) &pointbuf[0], (coord3d *) &pointbuf[3], (coord3d *) &pointbuf[6], (coord3d *) &pointbuf[9], frac, scale, pos);
-
-        pos->x += g_CurrentPlayer->field_3C4;
-        pos->y += g_CurrentPlayer->field_3C8;
-        pos->z += g_CurrentPlayer->field_3CC;
-
-        lookat->x = g_CurrentPlayer->field_3C4;
-        lookat->y = g_CurrentPlayer->field_3C8;
-        lookat->z = g_CurrentPlayer->field_3CC;
-
-#ifdef PORT
-        swirl = (void *)(((uintptr_t) g_IntroSwirl) + (uintptr_t) base);
-#else
-        swirl = (void *)(((u32) g_IntroSwirl) + (u32) base);
-#endif
-
-        if (!(swirl->bitflags & 4))
-        {
-            if (!(swirl[1].bitflags & 4))
-            {
-                scale = 1.0f;
-            }
-            else
-            {
-                scale = 1.0f - frac;
-            }
-        }
-        else if (swirl[1].bitflags & 4)
-        {
-            scale = 0.0f;
-        }
-        else
-        {
-            scale = frac;
-        }
-
-        lookat->x += (g_CurrentPlayer->field_488.applied_view.x * 40.0f) * scale;
-        lookat->y += (g_CurrentPlayer->field_488.applied_view.y * 40.0f) * scale;
-        lookat->z += (g_CurrentPlayer->field_488.applied_view.z * 40.0f) * scale;
-    }
-}
 
 
 /**
@@ -1302,87 +1108,7 @@ void bondviewFrozenCameraTick(u16 buttons, u16 oldbuttons, struct coord3d *pos, 
     void *p;
     struct PadRecord *setupPad;
 
-    if ((g_CameraMode == CAMERAMODE_INTRO) || (g_CameraMode == CAMERAMODE_FADESWIRL))
-    {
-        if (g_CameraMode == CAMERAMODE_INTRO)
-        {
-            if ((camera_transition_timer < 120.0f) && ((camera_transition_timer + g_GlobalTimerDelta) >= 120.0f))
-            {
-#if defined(VERSION_US)
-                setFontTables(ptrFontZurichBoldChars, ptrFontZurichBold);
-#ifdef PORT
-                hudmsgBottomShow(PORT_N64PTR(char, ptr_random06cam_entry->lang1c.lang_ptr));
-#else
-                hudmsgBottomShow(ptr_random06cam_entry->lang1c.lang_ptr);
-#endif
-#else
-#ifdef PORT
-                hudmsgBottomShow(PORT_N64PTR(char, ptr_random06cam_entry->lang1c.lang_ptr), ptrFontZurichBoldChars, ptrFontZurichBold);
-#else
-                hudmsgBottomShow(ptr_random06cam_entry->lang1c.lang_ptr, ptrFontZurichBoldChars, ptrFontZurichBold);
-#endif
-#endif
-            }
-
-            if (ptr_random06cam_entry->lang20.lang_ptr != NULL)
-            {
-                if ((camera_transition_timer < 300.0f) && ((camera_transition_timer + g_GlobalTimerDelta) >= 300.0f))
-                {
-#if defined(VERSION_US)
-#ifdef PORT
-                    hudmsgBottomShow(PORT_N64PTR(char, ptr_random06cam_entry->lang20.lang_ptr));
-#else
-                    hudmsgBottomShow(ptr_random06cam_entry->lang20.lang_ptr);
-#endif
-#else
-#ifdef PORT
-                    hudmsgBottomShow(PORT_N64PTR(char, ptr_random06cam_entry->lang20.lang_ptr), ptrFontZurichBoldChars, ptrFontZurichBold);
-#else
-                    hudmsgBottomShow(ptr_random06cam_entry->lang20.lang_ptr, ptrFontZurichBoldChars, ptrFontZurichBold);
-#endif
-#endif
-                }
-
-                if (camera_transition_timer > 480.0f)
-                {
-                    g_CameraAfterCinema = CAMERAMODE_INTRO;
-                }
-            }
-            else if (camera_transition_timer > 300.0f)
-            {
-                g_CameraAfterCinema = CAMERAMODE_INTRO;
-            }
-
-            camera_transition_timer += g_GlobalTimerDelta;
-
-            if ((lvlGetControlsLockedFlag() == 0)
-                && (buttons & ~oldbuttons & (CONT_A | B_BUTTON | Z_TRIG | START_BUTTON | CONT_R | CONT_L)))
-            {
-                g_CameraAfterCinema = CAMERAMODE_INTRO;
-            }
-        }
-        else if (g_CurrentPlayer->colourfadetimemax60 < 0.0f)
-        {
-            g_CameraAfterCinema = CAMERAMODE_INTRO;
-        }
-
-        pos->f[0] = ptr_random06cam_entry->unk04.fval;
-        pos->f[1] = ptr_random06cam_entry->unk08.fval;
-        pos->f[2] = ptr_random06cam_entry->unk0C.fval;
-
-        pos2->f[0] = pos->f[0] + (cosf(ptr_random06cam_entry->unk14.fval) * sinf(ptr_random06cam_entry->unk10.fval));
-        pos2->f[1] = pos->f[1] + sinf(ptr_random06cam_entry->unk14.fval);
-        pos2->f[2] = pos->f[2] - (cosf(ptr_random06cam_entry->unk14.fval) * cosf(ptr_random06cam_entry->unk10.fval));
-
-        p = &g_CurrentSetup.pads[ptr_random06cam_entry->unk18];
-        setupPad = p;
-        *stan = setupPad->stan;
-
-        arg6->f[0] = setupPad->pos.f[0];
-        arg6->f[1] = setupPad->pos.f[1];
-        arg6->f[2] = setupPad->pos.f[2];
-    }
-    else if (g_CameraMode == CAMERAMODE_MP)
+    if (g_CameraMode == CAMERAMODE_MP)
     {
         /**
         * CAMERAMODE_MP: Perfect Dark method playerTickMpSwirl
@@ -1462,85 +1188,6 @@ void bondviewFrozenCameraTick(u16 buttons, u16 oldbuttons, struct coord3d *pos, 
             g_CameraAfterCinema = CAMERAMODE_INTRO;
         }
 #endif
-    }
-    else if (g_CameraMode == CAMERAMODE_SWIRL)
-    {
-        camera_transition_timer += g_GlobalTimerDelta;
-
-        while (g_IntroSwirl[intro_camera_index].unk18.fval <= camera_transition_timer)
-        {
-            if (!(g_IntroSwirl[intro_camera_index + 3].unk04 & 1))
-            {
-                camera_transition_timer -= g_IntroSwirl[intro_camera_index].unk18.fval;
-                intro_camera_index++;
-            }
-            else
-            {
-                camera_transition_timer = g_IntroSwirl[intro_camera_index].unk18.fval;
-                g_CameraAfterCinema = CAMERAMODE_INTRO;
-                break;
-            }
-        }
-
-        sp30 += (g_IntroSwirl[intro_camera_index].unk18.fval - camera_transition_timer);
-
-        for (i = intro_camera_index + 1; !(g_IntroSwirl[i+2].unk04 & 1); i++)
-        {
-            sp30 += g_IntroSwirl[i].unk18.fval;
-        }
-
-        // Fade player body from opaque to transparent just before the player takes control.
-        if ((sp30 < 30.0f) && ((sp30 + g_GlobalTimerDelta) >= 30.0f))
-        {
-            currentPlayerStartChrFade(30.0f, 0.0f);
-        }
-
-        if (camera_fade_active != 0)
-        {
-            if (currentPlayerIsFadeComplete() != 0)
-            {
-                g_CameraAfterCinema = CAMERAMODE_INTRO;
-            }
-        }
-
-        if ((sp30 > 60.0f) && (camera_fade_active == 0))
-        {
-            if ((lvlGetControlsLockedFlag() == 0)
-                && (buttons & ~oldbuttons & (A_BUTTON | B_BUTTON | Z_TRIG | START_BUTTON | L_TRIG | R_TRIG)))
-            {
-                camera_fade_active = 1;
-                currentPlayerSetFadeColour(0, 0, 0, g_CurrentPlayer->colourscreenfrac);
-
-                if (currentPlayerIsFadeComplete() != 0)
-                {
-                    currentPlayerSetFadeFrac(60.0f, 1.0f);
-                }
-                else
-                {
-                    currentPlayerSetFadeFrac(g_CurrentPlayer->colourfadetime60, 1.0f);
-                }
-            }
-        }
-
-        bondviewCalcIntroSwirlCamera(intro_camera_index, camera_transition_timer, pos, pos2);
-
-        if (g_IntroSwirl[intro_camera_index].unk1C >= 0)
-        {
-            p = &g_CurrentSetup.pads[g_IntroSwirl[intro_camera_index].unk1C];
-            setupPad = p;
-            *stan = setupPad->stan;
-
-            arg6->f[0] = setupPad->pos.f[0];
-            arg6->f[1] = setupPad->pos.f[1];
-            arg6->f[2] = setupPad->pos.f[2];
-        }
-        else
-        {
-            *stan = g_CurrentPlayer->field_488.current_tile_ptr;
-            arg6->f[0] = g_CurrentPlayer->field_488.collision_position.f[0];
-            arg6->f[1] = g_CurrentPlayer->field_488.collision_position.f[1];
-            arg6->f[2] = g_CurrentPlayer->field_488.collision_position.f[2];
-        }
     }
     else if ((g_CameraMode == CAMERAMODE_DEATH_CAM_SP) || (g_CameraMode == CAMERAMODE_DEATH_CAM_MP))
     {
