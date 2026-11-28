@@ -21,8 +21,10 @@
  * (it is written to pcmodels-<region>/converter.ver); the game re-converts
  * the models once when the file is missing or differs (romconvert.c).
  * 1 = the plain conversion, 2 = character models subdivided, 3 = only the head parts are
- * subdivided, body parts keep the detailed mesh at every distance (conv_subdiv.c). */
-#define CV_CONVERTER_VERSION 3
+ * subdivided, body parts keep the detailed mesh at every distance (conv_subdiv.c), 4 = the
+ * setup files' credits block is relocated with the sections before it and little-endian (conv_d88.c),
+ * which changes pccg.bin: the game then converts everything again, not only the models. */
+#define CV_CONVERTER_VERSION 4
 int cv_converter_version(void);
 
 typedef struct { uint32_t off, size; const char *base; } CvFileRow;

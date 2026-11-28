@@ -10,7 +10,9 @@
  *                       driving a CutsceneRecord of ours through the game's fixed camera (AI_CameraSwitch)
  *   camera.reset        AI_CameraReturnToBond
  *   screen.fade_*       AI_ScreenFadeToBlack / AI_ScreenFadeFromBlack, AI_IFScreenFadeCompleted
- *   credits.*           AI_CreditsRoll / AI_IFCreditsHasCompleted
+ *   credits.roll / done AI_CreditsRoll / AI_IFCreditsHasCompleted
+ *   credits.show / stop our own (mission_host_credits.h): the menu draws the lines over every view (menu_ui.cpp drawCredits)
+ *   credits.rows        the level's credits (the pack's levels/cuba/setup.json): their text ids, for a script to turn into credits.show lines
  *   bond_body:teleport  AI_TRYTeleportingChrToPad on CHR_BOND_CINEMA (the player's own chr)
  *   bond_body:anim      AI_PlayAnimation on that chr, anim_done AI_IFPlayingAnimation's test
  *   bond_body:hold_item AI_BondEquipItemCinema; hide_weapon AI_BondHideWeapons
@@ -36,6 +38,8 @@
 #include "game/bondview.h"
 #include "game/gun.h"
 #include "game/lv.h"
+#include "texpack.h"
+#include "ge_pkg.h"
 #include "game/player.h"
 #include "game/propobj.h"
 #include "game/stan.h"
@@ -86,6 +90,9 @@ static struct {
     int    introDone;         /* "intro_done" went out */
     int    frozen, frozenSaved;   /* set_frozen(true) is in force, and the is_timer_active it replaced */
     int    creditsFake;       /* credits.roll on a level with no credits: done at once */
+    int    crScripted;        /* credits.show was called (done() then follows the scripted credits) */
+    int    crActive;          /* the scripted credits are on screen */
+    double crT;               /* seconds since they started */
     int    weaponHidden[NO_PLAYER_SLOTS];
     int    disarm[NO_PLAYER_SLOTS];     /* frames until the hands of a player whose body was removed are given back (0: none) */
     int    bodyItem[NO_PLAYER_SLOTS];   /* hold_item before show(true): the body is built holding this item (0: none) */
@@ -550,10 +557,14 @@ static int hFading(void *ud)
 
 /* ---- credits ------------------------------------------------------------- */
 
+/* The scripted credits (credits.show): a copy of the script's list (too big for S, which a reset clears with memset). */
+static MissionCredits s_credits;
+
 static int hCreditsRoll(void *ud)
 {
     (void)ud;
     S.creditsFake = 0;
+    S.crScripted = S.crActive = 0;
     /* The game draws the credits in the Cuba level only (bondview2.c: stage == LEVELID_CUBA, credits_pointer from the
      * level's text); anywhere else they would never start or finish. */
     if (bossGetStageNum() == LEVELID_CUBA && credits_pointer != NULL) {
@@ -568,7 +579,72 @@ static int hCreditsRoll(void *ud)
 static int hCreditsDone(void *ud)
 {
     (void)ud;
+    if (S.crScripted) return !S.crActive;
     return S.creditsFake || credits_state == 2;   /* AI_IFCreditsHasCompleted */
+}
+
+static int hCreditsShow(void *ud, const MissionCredits *c)
+{
+    (void)ud;
+    memcpy(&s_credits, c, sizeof s_credits);
+    S.creditsFake = 0;
+    S.crScripted = 1;
+    S.crActive = 1;
+    S.crT = 0.0;
+    return 1;
+}
+
+static void hCreditsStop(void *ud)
+{
+    (void)ud;
+    S.crActive = 0;
+}
+
+/* credits.rows: the Cuba credits come from the asset pack's levels/cuba/setup.json ("credits": rows of {"text1", "text2", ...},
+ * exported from the ROM's setup file, so the region's own list). The game's own pointer (credits_pointer) is not used: the
+ * converter widens the setup file without moving the credits offset, so on the PC it points at other bytes. */
+static int hCreditsRows(void *ud, unsigned short *ids, int max)
+{
+    unsigned char *file = NULL;
+    unsigned long len = 0;
+    char *text, *p, *end;
+    int n = 0;
+    (void)ud;
+    if (bossGetStageNum() != LEVELID_CUBA) return 0;
+    if (!assetRead("levels/cuba/setup.json", &file, &len, NULL) || !file) {
+        say("credits.rows: levels/cuba/setup.json is in no asset pack");
+        return 0;
+    }
+    text = (char *)malloc((size_t)len + 1);
+    if (!text) { pkgFree(file); return 0; }
+    memcpy(text, file, len);
+    text[len] = '\0';
+    pkgFree(file);
+    p = strstr(text, "\"credits\":[");
+    end = p ? strchr(p, ']') : NULL;   /* the rows hold no array: the first ] ends the list */
+    if (p && end) {
+        p += strlen("\"credits\":[");
+        while (n < max) {
+            char *t1 = strstr(p, "\"text1\":");
+            char *t2 = t1 ? strstr(t1, "\"text2\":") : NULL;
+            if (!t1 || !t2 || t1 > end || t2 > end) break;
+            ids[2 * n] = (unsigned short)strtol(t1 + strlen("\"text1\":"), NULL, 10);
+            ids[2 * n + 1] = (unsigned short)strtol(t2 + strlen("\"text2\":"), NULL, 10);
+            n++;
+            p = t2 + 8;
+        }
+    }
+    free(text);
+    return n;
+}
+
+/* The menu's overlay (menu_game.cpp): the scripted credits on screen, and how far they got. 0 when there are none. */
+int portCreditsView(const MissionCredits **credits, double *seconds)
+{
+    if (!S.crActive) return 0;
+    *credits = &s_credits;
+    *seconds = S.crT;
+    return 1;
 }
 
 /* ---- bond_body ----------------------------------------------------------- */
@@ -791,21 +867,37 @@ static void hBodySetGravity(void *ud, int player, int on)
     else chr->chrflags |= CHRFLAG_LOCK_Y_POS;
 }
 
-static void hBodySetFlags(void *ud, int player, int mask, int values)
+static void applyChrFlags(ChrRecord *chr, int mask, int values)
 {
     static const struct { int bit; u32 flag; } map[] = {
-        { MHC_BF_HITBOX_CULL, CHRFLAG_CULL_USING_HITBOX },
-        { MHC_BF_HEIGHT_LOCK, CHRFLAG_LOCK_Y_POS },
-        { MHC_BF_KNOCKABLE,   CHRFLAG_IMPACT_ALWAYS },
+        { MHC_BF_HITBOX_CULL,   CHRFLAG_CULL_USING_HITBOX },
+        { MHC_BF_HEIGHT_LOCK,   CHRFLAG_LOCK_Y_POS },
+        { MHC_BF_KNOCKABLE,     CHRFLAG_IMPACT_ALWAYS },
+        { MHC_BF_SORTED,        CHRFLAG_00020000 },
+        { MHC_BF_NO_COLLISION,  CHRFLAG_00010000 },
     };
-    ChrRecord *chr = bodyChr(player);
-    (void)ud;
-    if (!chr) { say("bond_body:set_body_flags: the player has no third-person body now"); return; }
     for (size_t k = 0; k < sizeof map / sizeof map[0]; k++) {
         if (!(mask & map[k].bit)) continue;
         if (values & map[k].bit) chr->chrflags |= map[k].flag;
         else chr->chrflags &= ~map[k].flag;
     }
+}
+
+static void hBodySetFlags(void *ud, int player, int mask, int values)
+{
+    ChrRecord *chr = bodyChr(player);
+    (void)ud;
+    if (!chr) { say("bond_body:set_body_flags: the player has no third-person body now"); return; }
+    applyChrFlags(chr, mask, values);
+}
+
+/* set_body_flags on a guard (AI_SetChrchrflags on that chr) */
+static void hChrSetFlags(void *ud, int chrnum, int mask, int values)
+{
+    ChrRecord *chr = chrnum >= 0 ? chrFindByLiteralId(chrnum) : NULL;
+    (void)ud;
+    if (!chr || !chr->prop) { say("set_body_flags: no such guard in the level"); return; }
+    applyChrFlags(chr, mask, values);
 }
 
 /* the player invincible: the game's own per-player invincibility (as the world's player set_invincible) and the body chr's flag */
@@ -1035,10 +1127,11 @@ const MissionHostCinema *missionsHostCinema(void)
     h.camera_set = hCameraSet; h.camera_move = hCameraMove; h.camera_moving = hCameraMoving; h.camera_stop = hCameraStop;
     h.fade = hFade; h.fading = hFading;
     h.credits_roll = hCreditsRoll; h.credits_done = hCreditsDone;
+    h.credits_show = hCreditsShow; h.credits_stop = hCreditsStop; h.credits_rows = hCreditsRows;
     h.body_teleport = hBodyTeleport; h.body_anim = hBodyAnim; h.body_anim_done = hBodyAnimDone;
     h.body_hold_item = hBodyHoldItem; h.body_show = hBodyShow; h.body_fade = hBodyFade; h.body_remove = hBodyRemove; h.body_set_shadow = hBodySetShadow;
     h.body_aim = hBodyAim; h.body_walk = hBodyWalk; h.body_drop_item = hBodyDropItem; h.body_set_gravity = hBodySetGravity;
-    h.body_set_flags = hBodySetFlags; h.body_set_invincible = hBodySetInvincible; h.show_hidden_chr = hShowHiddenChr;
+    h.body_set_flags = hBodySetFlags; h.chr_set_flags = hChrSetFlags; h.body_set_invincible = hBodySetInvincible; h.show_hidden_chr = hShowHiddenChr;
     h.set_frozen = hSetFrozen; h.hide_weapon = hHideWeapon; h.in_cutscene = hInCutscene;
     return &h;
 }
@@ -1098,6 +1191,12 @@ void missionsHostCinemaTick(void)
     if (S.active && !S.skipped) {
         for (p = 0; p < getPlayerCount() && p < NO_PLAYER_SLOTS; p++)
             if (joyGetButtonsPressedThisFrame((s8)p, A_BUTTON | B_BUTTON | Z_TRIG | START_BUTTON) != 0) S.skipped = 1;
+    }
+
+    /* the scripted credits scroll with the game's clock (it stands still when the game is paused) */
+    if (S.crActive) {
+        S.crT += (double)g_GlobalTimerDelta / 60.0;
+        if (mhcrFinished(&s_credits, S.crT)) S.crActive = 0;
     }
 
     /* the scene camera (camera.set / move / orbit): one step per game frame (g_GlobalTimerDelta is in 60ths of a second) */

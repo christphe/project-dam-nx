@@ -265,7 +265,12 @@ declare extern type Target with
     function walk_to(self, pad: Pad, speed: Speed?): boolean   -- on a body: walks there (scene)
     function drop_item(self, hand: string?)   -- on a body: drops what that hand holds ("right" default | "left")
     function set_gravity(self, on: boolean)   -- on a body: false holds it in the air (a jump, a fall)
-    function set_body_flags(self, flags: { hitbox_cull: boolean?, height_lock: boolean?, knockable: boolean? })
+    function set_body_flags(self, flags: { hitbox_cull: boolean?, height_lock: boolean?, knockable: boolean?, sorted: boolean?,
+                                           no_collision: boolean? })
+                                              -- on a body or a guard. sorted: drawn with the translucent things, far to near
+                                              -- (foliage behind it stays behind it; without it a character is drawn first and a leaf
+                                              -- far behind can show over it); no_collision: no collision box. The game's own
+                                              -- Cuba ending sets both on the two lovers
 end
 
 -- #165 types
@@ -508,9 +513,27 @@ declare camera: {
 -- Every player's view shows the scene camera while one is set (set, move, orbit, fixed, path) inside a cinema scene;
 -- outside a scene, the camera calls show it to every player too, until camera.reset().
 
+-- One line of credits. A string is a plain line. A table is one of:
+--   { text = string, style = "text" | "heading" | "title"?, align = "center" | "left" | "right"? }   a styled line
+--   { left = string?, right = string? }                                                              two columns (a role and a name)
+--   { gap = number }                                                                                  that many empty lines
+export type CreditsLine = string
+    | { text: string?, style: ("text" | "heading" | "title")?, align: ("center" | "left" | "right")?,
+        left: string?, right: string?, gap: number? }
+
 declare credits: {
-    roll: () -> (),                                     -- the game's end credits
-    done: () -> boolean,
+    roll: () -> (),                                     -- the game's own end credits (the Cuba level only)
+    show: (def: { lines: { CreditsLine }, speed: number?, backdrop: ("world" | "black")?, align: ("center" | "left" | "right")? }) -> (),
+                                                        -- your own credits, scrolling up over every player's view.
+                                                        -- speed: lines per second (default 1.5; the screen is 24 lines
+                                                        -- high); backdrop: "world" (default, the game stays visible) or
+                                                        -- "black"; align: the default alignment of the plain lines
+                                                        -- ("center" by default). At most 400 lines, 95 bytes each.
+    stop: () -> (),                                     -- ends the scripted credits at once (done() is then true)
+    rows: () -> { { text1: number, text2: number } },   -- the level's own credits block, row by row (the Cuba level's;
+                                                        -- empty elsewhere): two text ids per row, for text(id). The id
+                                                        -- 0x5011 means "nothing in this column". Build show's lines from it
+    done: () -> boolean,                                -- the credits (roll or show) ended
 }
 
 -- #165 events (raised by the host; wait(event(name, filter)) / on(name, fn, filter)):

@@ -20,6 +20,7 @@
 #include "menu_pad.h"
 #include "console.h"
 #include "menu_icons.h"
+#include "../../mission/mission_host_credits.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -293,7 +294,32 @@ static void modsView(menu::ModsView* v) {
     }
 }
 
-static void runFrame(int mode) {   /* 0 the menu, 1 the wheel, 2 the device assignment, 3 the co-op player count, 4 the Mods screen */
+extern "C" int portCreditsView(const MissionCredits** credits, double* seconds);
+
+/* The scripted credits (credits.show) on screen now: the lines in view, where they are and how opaque. */
+static void creditsView(menu::CreditsView* v) {
+    const MissionCredits* c = nullptr;
+    double t = 0.0;
+    if (!portCreditsView(&c, &t)) return;
+    v->view = MHCR_VIEW;
+    v->backdrop = mhcrBackdrop(c, t);
+    for (int i = 0; i < c->n; i++) {
+        const MhcrEntry* e = &c->e[i];
+        if (e->kind == MHCR_E_GAP || !mhcrVisible(c, e, t)) continue;
+        menu::CreditsView::Line ln;
+        ln.left = e->left;
+        ln.right = e->right;
+        ln.pair = e->kind == MHCR_E_PAIR;
+        ln.style = e->style;
+        ln.align = e->align;
+        ln.y = mhcrScreenY(c, e, t);
+        ln.h = e->h;
+        ln.alpha = mhcrAlpha(c, e, t);
+        v->lines.push_back(ln);
+    }
+}
+
+static void runFrame(int mode) {   /* 0 the menu, 1 the wheel, 2 the device assignment, 3 the co-op player count, 4 the Mods screen, 5 the scripted credits */
     const bool wheel = mode == 1;
     if (!s_ctx) init();
     const float W = (float)gfx_current_dimensions.width, H = (float)gfx_current_dimensions.height;
@@ -333,6 +359,10 @@ static void runFrame(int mode) {   /* 0 the menu, 1 the wheel, 2 the device assi
         menu::drawModsScreen(W, H, view, &hover, &click);
         modsScreenPointer(hover, click ? 1 : 0);
         menu::drawPointer(inputCrosshairCursorOn() != 0, W, H);
+    } else if (mode == 5) {   /* the scripted credits, over the game */
+        menu::CreditsView view;
+        creditsView(&view);
+        menu::drawCredits(W, H, view);
     } else if (mode == 2) {   /* who plays with which device */
         char an[4][48];
         int astep = 0, acount = 0;
@@ -465,6 +495,14 @@ extern "C" void menuUiClose(void) {
     if (modsScreenActive()) {   /* the idle branch of the overlay's emit: the Mods screen is up over the mode select */
         runFrame(4);
         return;
+    }
+    {   /* the scripted credits (credits.show) are on screen */
+        const MissionCredits* c = nullptr;
+        double t = 0.0;
+        if (portCreditsView(&c, &t)) {
+            runFrame(5);
+            return;
+        }
     }
     menu::showRoot();
     gfx_ui_submit(nullptr, 0, nullptr, 0, nullptr, 0);

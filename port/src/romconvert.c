@@ -15,10 +15,10 @@
  * no-op (two fsExists). On Switch the output lands next to the NRO
  * (sdmc:/switch/<app>/data/), since libnx starts with that as the CWD.
  *
- * The model sidecars carry a converter version (pcmodels-<region>/converter.ver,
+ * The sidecars carry a converter version (pcmodels-<region>/converter.ver,
  * written by the converter). When it is missing or differs from the compiled
- * one (CV_CONVERTER_VERSION) the models are converted again, once, so a user
- * with older sidecars gets the current models without deleting anything.
+ * one (CV_CONVERTER_VERSION) everything is converted again, once, so a user
+ * with older sidecars gets the current models and setups without deleting anything.
  *
  * After the sidecars, the game's base texture pack is made the same way:
  * <game>/texturepacks/ge007.ptexpack (port/export/texpack_export.c, the pack of
@@ -219,11 +219,11 @@ int romConvertEnsureSidecars(const unsigned char *romImg, const char *romRelPath
 
     if (stale)
         sysLogPrintf(LOG_INFO,
-            "romconvert: model sidecars are from an older converter - converting the models again (one-time)...");
+            "romconvert: sidecars are from an older converter - converting the ROM again (one-time)...");
     else
         sysLogPrintf(LOG_INFO,
             "romconvert: sidecars missing - converting the ROM (one-time, a few seconds)...");
-    int code = rcConvert(romPath, outDir, stale ? 1 : 7);
+    int code = rcConvert(romPath, outDir, 7);
     if (code != 0)
         sysLogPrintf(LOG_ERROR,
             "romconvert: conversion failed (code %d) - a non-retail or "

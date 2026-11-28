@@ -50,6 +50,16 @@ void setPackList(int (*rows)(std::vector<PackRow>* out), int (*act)(int row, int
 void drawWheel(float W, float H, int seat, float x0, float y0, float x1, float y1, const char* title, const std::vector<std::string>& names, int sel);
 /* The "press a button" screen of a multiplayer set-up: what each player has so far, whose turn it is. */
 void drawAssign(float W, float H, const std::vector<std::string>& names, int step, int count);
+/* The scripted credits (credits.show), over the game. Every line carries where it is: `y` is its top and `h` its height in
+ * screen lines (`view` lines make the screen's height, so the picture is the same at any resolution), `alpha` its
+ * opacity. style 0 text, 1 heading, 2 title; align 0 centre, 1 left, 2 right. A pair is a role (left of the centre line,
+ * right-aligned) and a name (right of it). `backdrop` is the opacity of a black screen behind them (0: none). */
+struct CreditsView {
+    struct Line { std::string left, right; bool pair = false; int style = 0, align = 0; float y = 0, h = 1, alpha = 1; };
+    std::vector<Line> lines;
+    float backdrop = 0, view = 24;
+};
+void drawCredits(float W, float H, const CreditsView& v);
 /* The co-op player count (2, 3 or 4) asked from the mode menu: `sel` 0..2 is the highlighted row. */
 void drawCoopCount(float W, float H, int sel, int* hover, bool* click);   /* hover: the row the mouse moved onto (-1 none) */
 /* The Mods screen (the mode select's MODS row): what it shows, filled by the game each frame. Entry 0 is GoldenEye. */

@@ -86,6 +86,24 @@ static void cFade(void *u, int black, double s) { Fake *f = u; callf(f, "fade(%d
 static int  cFading(void *u) { return ((Fake *)u)->fading; }
 static int  cCreditsRoll(void *u) { callf(u, "credits_roll"); return 1; }
 static int  cCreditsDone(void *u) { return ((Fake *)u)->creditsDone; }
+static int  cCreditsShow(void *u, const MissionCredits *c)
+{
+    callf(u, "credits_show(n=%d,speed=%.1f,black=%d,total=%.1f)", c->n, c->speed, c->black, c->total);
+    for (int i = 0; i < c->n; i++) {
+        const MhcrEntry *e = &c->e[i];
+        callf(u, "cr%d(k%d,s%d,a%d,y%.1f,'%s','%s')", i, e->kind, e->style, e->align, e->y, e->left, e->right);
+    }
+    return 1;
+}
+static void cCreditsStop(void *u) { callf(u, "credits_stop"); }
+static int  cCreditsRows(void *u, unsigned short *ids, int max)
+{
+    static const unsigned short rows[] = { 0x5010, 0x5011, 0x5011, 0x5011, 0x5012, 0x5013 };
+    int n = 3 < max ? 3 : max;
+    (void)u;
+    memcpy(ids, rows, (size_t)n * 2 * sizeof rows[0]);
+    return n;
+}
 static int  cTeleport(void *u, int p, int pad) { callf(u, "teleport(%d,%d)", p, pad); return pad == 700 ? 0 : 1; }
 static int  cAnim(void *u, int p, const char *name, int id, const MissionCinemaAnim *o)
 {
@@ -107,6 +125,7 @@ static int  cWalk(void *u, int p, int pad, int sp) { callf(u, "walk(%d,%d,%d)", 
 static void cDrop(void *u, int p, int left) { callf(u, "drop(%d,%d)", p, left); }
 static void cGravity(void *u, int p, int on) { callf(u, "gravity(%d,%d)", p, on); }
 static void cFlags(void *u, int p, int mask, int v) { callf(u, "flags(%d,%d,%d)", p, mask, v); }
+static void cChrFlags(void *u, int chr, int mask, int v) { callf(u, "chrflags(%d,%d,%d)", chr, mask, v); }
 static void cInv(void *u, int p, int on) { callf(u, "inv(%d,%d)", p, on); }
 static int  cShowHidden(void *u, int chr) { callf(u, "showhidden(%d)", chr); return ((Fake *)u)->introDone; }   /* introDone: "hide_all is on" here */
 static int  fPropChr(void *u, int p) { (void)u; return p + 100; }
@@ -121,11 +140,12 @@ static MissionHostCinema cinemaHost(Fake *f)
     c.camera_fixed = cFixed; c.camera_orbit = cOrbit; c.camera_reset = cCamReset;
     c.camera_set = cSet; c.camera_move = cMove; c.camera_moving = cMoving; c.camera_stop = cStop;
     c.fade = cFade; c.fading = cFading; c.credits_roll = cCreditsRoll; c.credits_done = cCreditsDone;
+    c.credits_show = cCreditsShow; c.credits_stop = cCreditsStop; c.credits_rows = cCreditsRows;
     c.body_teleport = cTeleport; c.body_anim = cAnim; c.body_anim_done = cAnimDone; c.body_hold_item = cHold;
     c.body_show = cShow; c.body_fade = cBodyFade; c.body_remove = cBodyRemove; c.body_set_shadow = cShadow; c.set_frozen = cFrozen; c.hide_weapon = cHideWeapon;
     c.in_cutscene = cInCutscene;
     c.body_aim = cAim; c.body_walk = cWalk; c.body_drop_item = cDrop; c.body_set_gravity = cGravity;
-    c.body_set_flags = cFlags; c.body_set_invincible = cInv; c.show_hidden_chr = cShowHidden;
+    c.body_set_flags = cFlags; c.chr_set_flags = cChrFlags; c.body_set_invincible = cInv; c.show_hidden_chr = cShowHidden;
     return c;
 }
 
@@ -507,6 +527,8 @@ int main(void)
         "b:drop_item()\n"
         "b:set_gravity(false)\n"
         "b:set_body_flags({ hitbox_cull = true, height_lock = false, knockable = true })\n"
+        "b:set_body_flags({ sorted = true, no_collision = true })\n"
+        "guard(2):set_body_flags({ sorted = true })\n"
         "b:set_invincible(true)\n"
         "message('tp ' .. tostring(b:teleport('dock')))\n"
         "camera.fixed(pad('dock'))\n"
@@ -536,6 +558,8 @@ int main(void)
         GE_CHECK(called(&f, "gravity(1,0);"));
         GE_CHECK(called(&f, "flags(1,5,5);") == 0);
         GE_CHECK(called(&f, "flags(1,7,5);"));                          /* mask: all three; values: hitbox_cull + knockable */
+        GE_CHECK(called(&f, "flags(1,24,24);"));                        /* sorted (8) + no_collision (16) */
+        GE_CHECK(called(&f, "chrflags(102,8,8);"));                     /* a guard: the host is given its chr (the fake's prop + 100) */
         GE_CHECK(called(&f, "inv(1,1);"));
         GE_CHECK(hasMsg(&f, "tp true"));
         GE_CHECK(called(&f, "teleport(1,77);"));                        /* a mission pad id on the body */
@@ -576,6 +600,65 @@ int main(void)
         missionRtRaise(rt, "intro_done", NULL, 0);                      /* what missionsHostCinemaTick does */
         run(rt, 0.2);
         GE_CHECK(hasMsg(&f, "go"));
+        missionRtDestroy(rt);
+    }
+    missionFree(&m);
+
+    /* ---- credits.show: the list a script gives reaches the host as the model lays it out --------------- */
+    memset(&f, 0, sizeof f);
+    f.nplayers = 1;
+    c = cinemaHost(&f);
+    h = host(&f, &c);
+    rt = start(&m,
+        "credits.show({\n"
+        "  speed = 2, backdrop = 'black', align = 'left',\n"
+        "  lines = {\n"
+        "    { text = 'Operation Halcyon', style = 'title', align = 'center' },\n"
+        "    { gap = 2 },\n"
+        "    { text = 'Cast', style = 'heading' },\n"
+        "    { left = 'Agent', right = 'Alice Example' },\n"
+        "    'Plain line',\n"
+        "    { text = 'Right one', align = 'right' },\n"
+        "  } })\n"
+        "local ok1, e1 = pcall(credits.show, { lines = 5 })\n"
+        "message('e1 ' .. tostring(e1))\n"
+        "local ok2, e2 = pcall(credits.show, { lines = { true } })\n"
+        "message('e2 ' .. tostring(e2))\n"
+        "local ok3, e3 = pcall(credits.show, { lines = { { style = 'title' } } })\n"
+        "message('e3 ' .. tostring(e3))\n"
+        "local ok4, e4 = pcall(credits.show, { lines = { { text = 'x', style = 'huge' } } })\n"
+        "message('e4 ' .. tostring(e4))\n"
+        "local ok5, e5 = pcall(credits.show, { lines = { 'a' }, backdrop = 'red' })\n"
+        "message('e5 ' .. tostring(e5))\n"
+        "local many = {}\n"
+        "for i = 1, 401 do many[i] = 'line ' .. i end\n"
+        "local ok6, e6 = pcall(credits.show, { lines = many })\n"
+        "message('e6 ' .. tostring(e6))\n"
+        "local rows = credits.rows()\n"
+        "message('rows ' .. #rows .. ' ' .. rows[1].text1 .. ' ' .. rows[2].text2 .. ' ' .. rows[3].text2)\n"
+        "credits.show({ speed = 99, lines = { 'fast' } })\n"
+        "credits.stop()\n"
+        "wait(event('start'))\n", &f, &h);
+    GE_CHECK(rt != NULL);
+    if (rt) {
+        run(rt, 0.3);
+        if (!called(&f, "credits_stop;")) for (int i = 0; i < f.nlog; i++) printf("  log: %s\n", f.logs[i]);
+        GE_CHECK(called(&f, "credits_show(n=6,speed=2.0,black=1,total=9.3);"));   /* 2.6 + 2 + 1.7 + 1 + 1 + 1 */
+        GE_CHECK(called(&f, "cr0(k0,s2,a0,y0.0,'Operation Halcyon','');"));
+        GE_CHECK(called(&f, "cr1(k2,s0,a0,y2.6,'','');"));                       /* a gap of two lines */
+        GE_CHECK(called(&f, "cr2(k0,s1,a1,y4.6,'Cast','');"));                  /* the default alignment: left */
+        GE_CHECK(called(&f, "cr3(k1,s0,a0,y6.3,'Agent','Alice Example');"));    /* two columns */
+        GE_CHECK(called(&f, "cr4(k0,s0,a1,y7.3,'Plain line','');"));
+        GE_CHECK(called(&f, "cr5(k0,s0,a2,y8.3,'Right one','');"));
+        GE_CHECK(hasMsg(&f, "e1 credits.show: lines must be a list"));
+        GE_CHECK(hasMsg(&f, "e2 credits.show: line 1 is neither a string nor a table"));
+        GE_CHECK(hasMsg(&f, "e3 credits.show: line 1 has no text, left, right or gap"));
+        GE_CHECK(hasMsg(&f, "e4 credits.show: style must be one of \"text\", \"heading\", \"title\", not \"huge\""));
+        GE_CHECK(hasMsg(&f, "e5 credits.show: backdrop must be one of \"world\", \"black\", not \"red\""));
+        GE_CHECK(hasMsg(&f, "e6 credits.show: more than 400 lines"));
+        GE_CHECK(hasMsg(&f, "rows 3 20496 20497 20499"));                          /* 0x5010, 0x5011, 0x5013 as numbers */
+        GE_CHECK(called(&f, "credits_show(n=1,speed=10.0,black=0,total=1.0);"));   /* the speed is clamped */
+        GE_CHECK(called(&f, "credits_stop;"));
         missionRtDestroy(rt);
     }
     missionFree(&m);
