@@ -15,7 +15,7 @@
 
 Machine-specific paths are NOT in this file: they come from <repo>/.env, or the main checkout's when run from a worktree (gitignored):
 SWITCH_IP, SWITCH_EMU_EXE, SWITCH_EMU_SD (default %APPDATA%/Ryujinx/sdcard),
-N64_EMU_EXE, N64_ROM (the .z64 to open), DOCKER_IMAGE (optional). The same lookup serves the tools_pc viewers and
+N64_EMU_EXE, N64_ROM_US / N64_ROM_JP / N64_ROM_PAL (the .z64 to open), DOCKER_IMAGE (optional). The same lookup serves the tools_pc viewers and
 scripts (tools/devenv.py): they find the ROM through N64_ROM, else a game data/ folder.
 """
 import argparse, json, os, shutil, subprocess, sys, time
@@ -27,7 +27,7 @@ import devenv   # .env (the main checkout's from a worktree), ROM and g++ lookup
 REPO = Path(__file__).resolve().parents[1]
 HERE = Path(__file__).resolve().parent
 KEYS = {"console_ip": "SWITCH_IP", "ryujinx_exe": "SWITCH_EMU_EXE", "ryujinx_sd": "SWITCH_EMU_SD",
-        "ares_exe": "N64_EMU_EXE", "ares_rom": "N64_ROM", "image": "DOCKER_IMAGE"}
+        "ares_exe": "N64_EMU_EXE", "ares_rom": "N64_ROM_US", "image": "DOCKER_IMAGE"}
 IMAGE = cfg_image = "ghcr.io/christphe/project-dam-build@sha256:7ba869fa0ea8b7195b7dcab3b23f87ae2e3065fac1001bd89ca817771dcc7baf"   # the published build image (tools/check_build_image.py keeps it in sync)
 SD_DIR = "switch/project-dam"          # game folder on the SD card
 NX_DIR = "project-dam"                 # the same folder for nxlink: the netloader writes under sdmc:/switch/
@@ -71,7 +71,7 @@ def cfg():
 
 def need(c, key):
     if not c.get(key):
-        sys.exit(f"missing '{key}': set the matching variable in <repo>/.env (SWITCH_IP, SWITCH_EMU_EXE, SWITCH_EMU_SD, N64_EMU_EXE, N64_ROM)")
+        sys.exit(f"missing '{key}': set the matching variable in <repo>/.env (SWITCH_IP, SWITCH_EMU_EXE, SWITCH_EMU_SD, N64_EMU_EXE, N64_ROM_US)")
     return c[key]
 
 
@@ -114,9 +114,23 @@ def game_args(a):
         out.append(f"-level_{a.level:02d}")
     if a.hard is not None:
         out.append(f"-hard{a.hard}")
-    if getattr(a, "secs", None):
-        out.append(f"NX_TEST_SECS={a.secs}")
     return out + list(a.args)
+
+
+def game_env(a):
+    """--env NAME=value (repeatable) and --secs as {NAME: value}."""
+    env = {}
+    for t in (a.env or []) + ([f"NX_TEST_SECS={a.secs}"] if getattr(a, "secs", None) else []):
+        k, eq, v = t.partition("=")
+        if not eq or not k:
+            sys.exit(f"--env wants NAME=value, got '{t}'")
+        env[k] = v
+    return env
+
+
+def nx_tokens(a):
+    """Game args + env as the NX_ARGS build reads them: NAME=value tokens beside the switches."""
+    return game_args(a) + [f"{k}={v}" for k, v in game_env(a).items()]
 
 
 def cmd_build(a):
@@ -139,7 +153,7 @@ def cmd_nx(a):
     log.write_text("", encoding="utf-8")
     dest = "project-dam.nro" if a.installed else "project-dam-test.nro"   # --installed: the in-game update's target
     cmd = [sys.executable, str(HERE / "switch" / "nxlink.py"), ip, str(nro), f"{NX_DIR}/{dest}",
-           str(log)] + game_args(a)
+           str(log)] + nx_tokens(a)
     print(f"log: {log}")
     env = dict(os.environ, NXLINK_RETRIES=os.environ.get("NXLINK_RETRIES", "20"))
     # the client waits for the game's stdio after the upload; a TimeoutError then is normal for non-link builds
@@ -157,7 +171,7 @@ def cmd_switch(a):
     sd.mkdir(parents=True, exist_ok=True)
     (sd / "data").mkdir(exist_ok=True)
     shutil.copyfile(nro, sd / "project-dam.nro")
-    args = game_args(a)
+    args = nx_tokens(a)
     if args:
         args_file = sd / "data" / "ge007.args"
         if args_file.exists() and not (args_file.with_suffix(".args.bak")).exists():
@@ -170,6 +184,8 @@ def cmd_switch(a):
 
 def cmd_n64(a):
     c = cfg()
+    if "ares_rom" not in c and devenv.load_env().get("N64_ROM"):   # the older single-ROM key
+        c["ares_rom"] = devenv.load_env()["N64_ROM"]
     exe, rom = need(c, "ares_exe"), need(c, "ares_rom")
     subprocess.Popen([exe, rom], cwd=str(Path(exe).parent))   # ROM path only: --system opens an Error window
 
@@ -186,11 +202,23 @@ def ensure_native_data(exe):
             env["SWITCH_EMU_SD"] = cfg()["ryujinx_sd"]
         src = devenv.find_rom(env)                         # N64_ROM, another game data/ folder, the emulator's SD card
         if src is None:
-            sys.exit(f"no ROM for the native build: set N64_ROM in .env (or put {names[0]} in {data})")
+            sys.exit(f"no ROM for the native build: set N64_ROM_US in .env (or put {names[0]} in {data})")
         src = Path(src)
         print(f"copying the ROM into {data / names[0]}")
         shutil.copyfile(src, data / names[0])
     return data
+
+
+def sync_campaign(exe):
+    """The solo campaign (campaign/) as a mod folder next to the exe: mods/campaign.pmod/ in directory form
+    (a .pmod may be a plain folder), refreshed on every run so edits to the Luau scripts show up."""
+    dest = Path(exe).parent / "mods" / "campaign.pmod"
+    if dest.is_dir():
+        shutil.rmtree(dest)
+    elif dest.exists():
+        dest.unlink()                                      # a packed .pmod from a release zip
+    shutil.copytree(REPO / "campaign", dest, ignore=shutil.ignore_patterns(".*", "dist"))
+    print(f"campaign -> {dest}")
 
 
 def cmd_native(a, kind):
@@ -201,15 +229,11 @@ def cmd_native(a, kind):
     if not exe.exists():
         sys.exit(f"{exe} does not exist: run with --build")
     data = ensure_native_data(exe)
+    if not a.no_campaign:
+        sync_campaign(exe)
     # Only the Switch NX_ARGS build turns NAME=value tokens into environment variables; the PC game would take
     # them as plain arguments and ignore them (GE_QUITFRAME=300 never quit). Set them in its environment here.
-    args, env = [], dict(os.environ)
-    for t in game_args(a):
-        k, eq, v = t.partition("=")
-        if eq and k and not t.startswith("-"):
-            env[k] = v
-        else:
-            args.append(t)
+    args, env = game_args(a), dict(os.environ, **game_env(a))
     if kind == "linux" and os.name == "nt":
         wsl = subprocess.run(["wsl", "wslpath", "-a", exe.as_posix()], capture_output=True, text=True).stdout.strip()
         if not wsl:                                         # backslashes would be eaten by the WSL shell
@@ -248,8 +272,9 @@ def cmd_editor(a):
     if a.renderer:
         args += ["--renderer", a.renderer]
     args += list(a.args)
+    env = dict(os.environ, **game_env(a))
     print("+", exe, " ".join(args), flush=True)
-    p = subprocess.Popen([str(exe)] + args, cwd=str(exe.parent))
+    p = subprocess.Popen([str(exe)] + args, cwd=str(exe.parent), env=env)
     time.sleep(2)
     if p.poll() is not None:
         sys.exit(f"the editor exited right away (code {p.returncode})")
@@ -293,13 +318,13 @@ def tools_status():
             print(f"  {'':10} g++: {gxx or 'MISSING (set SEAVIEW_GXX in .env)'}")
         if name in ROM_KEYS:
             rom = devenv.find_rom(env, ROM_KEYS[name])
-            print(f"  {'':10} ROM: {rom or 'none (set N64_ROM in .env)'}")
+            print(f"  {'':10} ROM: {rom or 'none (set N64_ROM_US in .env)'}")
         if name == "verify":
             d = devenv.find_data(env)
             print(f"  {'':10} data: {d or 'none: run the game once so it converts the ROM (dev.py win)'}")
         print()
     print("  any other tools_pc/<name>.py or .sh runs the same way, from the repo root, the ROM found through .env.")
-    print("  ROM:", devenv.find_rom(env) or "none (set N64_ROM in .env)")
+    print("  ROM:", devenv.find_rom(env) or "none (set N64_ROM_US in .env)")
     print("  .env:", ", ".join(p for p in devenv.env_files() if os.path.exists(p)) or "none (copy .env.example)")
 
 
@@ -349,7 +374,8 @@ def main():
     def game_opts(p):
         p.add_argument("--level", type=level_arg, metavar="LEVEL", help="boot into a solo level: a number or a name. " + LEVELS_HELP)
         p.add_argument("--hard", type=int, help="-hardN (0..3)")
-        p.add_argument("args", nargs="*", help="extra game args / NAME=value env tokens")
+        p.add_argument("--env", action="append", metavar="NAME=value", help="environment variable for the game (repeatable)")
+        p.add_argument("args", nargs="*", help="after `--`: game args passed as they are (-level_09, ...)")
 
     p = sub.add_parser("build", help="build one target in Docker", formatter_class=argparse.RawDescriptionHelpFormatter,
                        description=TARGETS_HELP)
@@ -376,6 +402,7 @@ def main():
     for name, kind in (("win", "windows"), ("linux", "linux")):
         p = sub.add_parser(name, help=f"run the native {kind} build")
         p.add_argument("--build", action="store_true", help="rebuild first (Docker)")
+        p.add_argument("--no-campaign", action="store_true", help="do not copy campaign/ to mods/campaign.pmod/ (default: copy)")
         game_opts(p); p.set_defaults(fn=lambda a, k=kind: cmd_native(a, k))
 
     p = sub.add_parser("editor", help="run the mission editor (Windows build), its game next to it")
@@ -385,7 +412,8 @@ def main():
     p.add_argument("--mod", help="mod folder (mods/<mod>) to open")
     p.add_argument("--mission", help="mission.json to open (its level comes with it)")
     p.add_argument("--renderer", choices=["gl", "vk"], help="the editor's ge_render backend: OpenGL or Vulkan (default: the Settings choice, OpenGL)")
-    p.add_argument("args", nargs="*", help="extra editor args (see project-dam-editor --help)")
+    p.add_argument("--env", action="append", metavar="NAME=value", help="environment variable for the editor (repeatable)")
+    p.add_argument("args", nargs="*", help="after `--`: editor args passed as they are (see project-dam-editor --help)")
     p.set_defaults(fn=cmd_editor)
 
     p = sub.add_parser("config"); p.set_defaults(fn=cmd_config)

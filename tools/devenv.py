@@ -15,7 +15,7 @@ import glob, os, subprocess
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 # Keys the real environment may override even when no .env names them.
-KNOWN = ("SWITCH_IP", "SWITCH_EMU_EXE", "SWITCH_EMU_SD", "N64_EMU_EXE", "N64_ROM", "DOCKER_IMAGE", "SEAVIEW_GXX",
+KNOWN = ("SWITCH_IP", "SWITCH_EMU_EXE", "SWITCH_EMU_SD", "N64_EMU_EXE", "N64_ROM", "N64_ROM_US", "N64_ROM_JP", "N64_ROM_PAL", "DOCKER_IMAGE", "SEAVIEW_GXX",
          "MODELVIEW_GXX", "MODELVIEW_ROM", "MODELVIEW_EXPORT", "MODELVIEW_GAME", "FXVIEW_GXX", "FXVIEW_ROM", "H700_IP")
 ROM_NAMES = ("ge007.ntsc-final.z64", "baserom.u.z64")   # the names the PC game looks for in its data/
 SD_DIR = "switch/project-dam"                           # the game folder on the Switch emulator's SD card
@@ -64,7 +64,7 @@ def load_env():
 
 def rom_candidates(env, keys=()):
     """(where, path) in the order find_rom tries them; the paths may not exist."""
-    out = [(k, env[k]) for k in tuple(keys) + ("N64_ROM",) if env.get(k)]
+    out = [(k, env[k]) for k in tuple(keys) + ("N64_ROM_US", "N64_ROM") if env.get(k)]
     for r in roots():
         for d in ("build-win/data", "build-pc/data", "build-linux/data", "data"):
             for n in ROM_NAMES:

@@ -67,4 +67,4 @@ The first menu's **Controllers** button opens the same screen at any time.
 - Always pair it with `GE_PADS=N`: the Switch only seats connected controllers, so with one pad
   co-op would start with a single player. `GE_PADS=1..4` forces the first N seats.
 - `GE_COOP_SPLIT`, `GE_COOP_CINEFULL=0`: split-screen and cutscene variants, for checks.
-- Example: `python tools/dev.py nx --level dam GE_COOP=1 GE_PADS=2` ([dev-py.md](dev-py.md)).
+- Example: `python tools/dev.py nx --level dam --env GE_COOP=1 --env GE_PADS=2` ([dev-py.md](dev-py.md)).
