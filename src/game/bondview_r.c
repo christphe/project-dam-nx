@@ -21,7 +21,6 @@
 #include "game/gun.h"
 #include "game/language.h"
 #include "game/player.h"
-#include "game/ramromreplay.h"
 #include "game/stan.h"
 
 
@@ -188,7 +187,7 @@ void bondviewLoadSetupIntroSection(void)
                 case INTROTYPE_SPAWN:
                 {
                     if (g_CurrentSetup.pads != NULL
-                        && (check_ramrom_flags() == ((struct SetupIntroSpawn*)intro_record)->is_demo_playback))
+                        && (((struct SetupIntroSpawn*)intro_record)->is_demo_playback == 0))
                     {
                         g_Startpad[startpadcount] = &g_CurrentSetup.pads[((struct SetupIntroSpawn*)intro_record)->index];
                         startpadcount++;
@@ -206,7 +205,7 @@ void bondviewLoadSetupIntroSection(void)
                 {
                     intro_item = (struct SetupIntroItem*)intro_record;
 
-                    if (check_ramrom_flags() == intro_item->is_demo_playback)
+                    if (intro_item->is_demo_playback == 0)
                     {
                         weaponLoadProjectileModels(intro_item->item_right);
 
@@ -245,7 +244,7 @@ void bondviewLoadSetupIntroSection(void)
 
                 case INTROTYPE_AMMO:
                 {
-                    if (check_ramrom_flags() == ((struct SetupIntroAmmo*)intro_record)->is_demo_playback)
+                    if (((struct SetupIntroAmmo*)intro_record)->is_demo_playback == 0)
                     {
                         give_cur_player_ammo(((struct SetupIntroAmmo*)intro_record)->ammo_type, ((struct SetupIntroAmmo*)intro_record)->ammo_amount);
                     }

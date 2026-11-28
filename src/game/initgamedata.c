@@ -7,7 +7,7 @@
   **/
 void initGameData(void) {
     current_menu = MENU_INVALID;
-    menu_update = MENU_LEGAL_SCREEN;
+    menu_update = MENU_FILE_SELECT;
     maybe_prev_menu = MENU_INVALID;
     g_MenuTimer = 0;
     selected_stage = LEVELID_NONE;

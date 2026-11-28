@@ -76,13 +76,9 @@ s32 dword_CODE_bss_8008C264;
 s32 dword_CODE_bss_8008C268;
 s32 dword_CODE_bss_8008C26C;
 //CODE.bss:8008C270
-char ramrom_data_target[0x380];
 //CODE.bss:8008C5F0
-s32 record_slot_num;
 //CODE.bss:8008C5F4
-u8 * address_demo_loaded;
 //CODE.bss:8008C5F8
-s32 dword_CODE_bss_8008C5F8;
 
 
 // data
@@ -457,38 +453,27 @@ void lvlStageLoad(s32 stage)
                 osSyncPrintf("GE_STARTMENU: menu=0x%x page=%d stage=%d diff=%d\n",
                              want, page, selected_stage, diff);
             } else {
-                /* D216: Game.SkipIntro — boot straight to the file-select
-                 * menu, skipping the legal screen + Nintendo/Rare/GoldenEye
-                 * logo attract loop. Reuses the game's own post-intro route:
-                 * every intro stage already jumps to MENU_FILE_SELECT once
-                 * is_first_time_on_main_menu is FALSE (front.c). Port config
-                 * only; default 0 = unchanged.
+                /* Boot goes straight to the profile select (file select): the
+                 * legal page, Nintendo/Rare/GoldenEye logos, gun barrel and the
+                 * attract demos are gone.
                  *
-                 * D3xx (found this session): the skipped legal screen's own
-                 * init (front.c init_menu00_legalscreen) is what calls
-                 * fileValidateSaves() -- the only place saves[] is ever
-                 * populated from EEPROM. Skipping straight to file-select
-                 * left saves[] all-zero, so fileGetSaveForFoldernum()
-                 * returned NULL for every folder except whichever one a
-                 * zeroed save_data happens to decode to, and file-select's
-                 * unguarded fileGetIsCheatUnlocked() (file2.c:397) crashed
-                 * dereferencing NULL for the other three. Call it here too
-                 * so saves[] matches what the legal screen would have
-                 * produced. */
-                extern s32 portSkipIntro;
-                /* D408: boot only. This block runs on EVERY title-stage load,
-                 * including the return from a mission; forcing file-select
-                 * there overwrote menu_update and skipped the post-mission
+                 * The legal page's init was the only caller of
+                 * fileValidateSaves(), the only place saves[] is populated from
+                 * the EEPROM. Without it saves[] stays all-zero and the file
+                 * select dereferences a NULL save (D299), so call it here.
+                 *
+                 * Boot only (D408): this block runs on EVERY title-stage load,
+                 * including the return from a mission; forcing file select
+                 * there would overwrite menu_update and skip the post-mission
                  * failure dossier. is_first_time_on_main_menu is TRUE only
-                 * until the first pass through here (cleared below). */
-                if (portSkipIntro && is_first_time_on_main_menu) {
+                 * until the first pass through here. */
+                if (is_first_time_on_main_menu) {
                     extern void fileValidateSaves(void);
                     fileValidateSaves();
                     is_first_time_on_main_menu = FALSE;
                     prev_keypresses = TRUE;
                     maybe_is_in_menu = TRUE;
                     menu_update = MENU_FILE_SELECT;
-                    osSyncPrintf("Game.SkipIntro: booting to file-select\n");
                 }
             }
         }

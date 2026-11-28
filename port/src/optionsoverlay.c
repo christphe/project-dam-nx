@@ -495,9 +495,6 @@ static struct Row rows[] = {
     /* D226: scales the ammo counter, pickup/status text and dialogue. */
     { .key="Game.HudScale", .label="HUD scale", .kind=ROW_SLIDER, .step=5, .unit="%" },
     SEPT(G3, "Campaign"),
-    /* D216/Game.SkipIntro: D408 -- with it on, a failed/aborted
-     * mission skips the post-mission failure dossier (MENU_MISSION_FAILED). */
-    { .key="Game.SkipIntro", .label="Skip intro", .kind=ROW_TOGGLE, .step=1, .names=kOnOff },
     /* D257: everything-unlocked goodie. D442: a pure query-time/RAM override
      * (file2.c fileGetIsCheatUnlocked + fileIsStageUnlockedAtDifficulty, plus
      * the debug flags set by portAllUnlockedApply in main.c); no save bytes are
@@ -1483,7 +1480,7 @@ static void overlayInit(void)
         {
             static const char *const gameKeys[] = {
                 "Bond.Sight", "Bond.Ammo", "Game.HudScale", "Video.FovScale", "Input.CrouchMode",
-                "Video.CrosshairColor", "Game.SkipIntro"
+                "Video.CrosshairColor"
             };
             overlayOpenHeader(rowIndexByKey("__HdrGame"));
             for (size_t k = 0; k < sizeof(gameKeys) / sizeof(gameKeys[0]); k++) {
@@ -4437,7 +4434,6 @@ static const struct { const char *key, *help; } kRowHelp[] = {
     { "Game.AIWideView", "Extends guard behavior to any widescreen view." },
     { "Game.NoHitFlash", "Disables the white flash when you take damage." },
     { "Game.HudScale", "Scales ammo, pickup text, dialogue and this menu." },
-    { "Game.SkipIntro", "Skips the intro and opens the file select screen." },
     { "Game.AllUnlocked", "Unlocks all levels, 007 mode and every cheat." },
     { "Game.CheckUpdates", "Notifies you when a new version is available." },
     { "Game.MissionTimer", "Shows the mission elapsed time on screen (top-right, under the FPS readout)." },

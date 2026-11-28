@@ -125,12 +125,6 @@
     "-Wint-conversion": 1,
     "-Wpointer-to-int-cast": 9
   },
-  "src/game/ramromreplay.c": {
-    "-Wpointer-to-int-cast": 2
-  },
-  "src/game/ramromreplay.h": {
-    "-Wint-conversion": 1
-  },
   "src/game/rsp.c": {
     "-Wint-conversion": 1,
     "-Wint-to-pointer-cast": 1,

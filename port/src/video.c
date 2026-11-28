@@ -165,10 +165,6 @@ void videoBootWindowGeometry(int *w, int *h, int *x, int *y, int *fullscreen)
  */
 f32 portScreenShakeScale = 1.0f;
 
-/* D216: Game.SkipIntro — read once in src/game/lv.c at title-stage load.
- * 0 (default) = the legal screen + logo attract sequence plays as normal. */
-s32 portSkipIntro = 0;
-
 /* D232: Game.NoHitFlash — the community "no damage flash" toggle (route-(b)
  * hook in src/game/bondview2.c currentPlayerSetFadeColour). 0 (default) =
  * original damage flash. */
@@ -667,7 +663,6 @@ f32 portRoomPoolScale(void)
 PD_CONSTRUCTOR static void videoConfigInit(void)
 {
     configRegisterFloat("Game.ScreenShakeIntensity", &portScreenShakeScale, 0.0f, 10.0f);
-    configRegisterInt("Game.SkipIntro", &portSkipIntro, 0, 1);
     configRegisterInt("Game.NoHitFlash", &portNoHitFlash, 0, 1);
     configRegisterInt("Game.AIWideView", &cfgAIWideView, 0, 1);   /* D468 */
     configRegisterInt("Video.CrosshairHide",  &portCrosshairHide, 0, 1);  /* v0.4.0 M2 (D373) */

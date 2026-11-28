@@ -946,11 +946,6 @@ u16 color_palette_entries_50_percent[] = {1, 0x1F, 0x3C1, 0x3DF, 0x7801, 0x781F,
 Gfx* frontAddPreviousTabText(Gfx* DL);
 s32 check_if_stage_completed_on_difficulty(int stage, DIFFICULTY difficulty);
 s32 get_highest_unlocked_difficulty_for_level(s32 arg0);
-Gfx *constructor_menu00_legalscreen(Gfx *DL);
-Gfx *constructor_menu01_nintendo(Gfx *DL);
-Gfx *constructor_menu02_rareware(Gfx *DL);
-Gfx *constructor_menu03_eye(Gfx *DL);
-Gfx *constructor_menu04_goldeneyelogo(Gfx *DL);
 Gfx *constructor_menu05_fileselect(Gfx *DL);
 Gfx *constructor_menu06_modesel(Gfx *DL);
 Gfx *constructor_menu07_missionsel(Gfx *DL);
@@ -1432,182 +1427,6 @@ u32 frontCheckCursorOnNextTab(void)
 //BEGIN MENU SECTIONS
 //********************************************************************************************************
 
-//********************************************************************************************************
-//LEGAL SCREEN
-//********************************************************************************************************
-
-void init_menu00_legalscreen(void)
-{
-    s32 padding;
-    struct coord3d pos;
-
-    musicTrack1Stop();
-    maybe_is_in_menu = TRUE;
-    g_MenuTimer = 0;
-    pos = legalpage_pos;
-    load_object_fill_header(PitemZ_entries[PROP_LEGALPAGE].header, PitemZ_entries[PROP_LEGALPAGE].filename, ptr_logo_and_walletbond_DL, 0x3c000, 0);
-    modelCalculateRwDataLen(PitemZ_entries[PROP_LEGALPAGE].header);
-
-    logoinst = modelmgrInstantiateModel(PitemZ_entries[PROP_LEGALPAGE].header);
-    #ifdef DEBUG
-        assert(logoinst);
-    #endif
-    modelSetScale(logoinst, 1.0f);
-    setsuboffset(logoinst, &pos);
-    fileValidateSaves();
-}
-
-
-void update_menu00_legalscreen(void)
-{
-    is_first_time_on_legal_screen = FALSE;
-    clear_model_obj(logoinst);
-}
-
-
-void interface_menu00_legalscreen(void)
-{
-#ifdef REFRESH_PAL
-#define MENU_LEGALSCREEN_MENU_TIMER_MAX (50*4+1)
-#else
-#define MENU_LEGALSCREEN_MENU_TIMER_MAX (60*4+1)
-#endif
-
-    viSetFovY(FOV_Y_F);
-    viSetAspect(ASPECT_RATIO_SD);
-    viSetZRange(100.0f, 10000.0f);
-    viSetUseZBuf(0);
-#if defined(ISGOLDFINGER) || defined(USEEXPANSION)
-    if (osGetMemSize != 0x00800000)
-    {
-        frontChangeMenu(MENU_NO_CONTROLLERS, TRUE); //double up as No expansion pak window
-        return;
-    }
-#endif
-    g_MenuTimer += g_ClockTimer;
-
-    if (g_MenuTimer >= MENU_LEGALSCREEN_MENU_TIMER_MAX)
-    {
-        if ((joyGetControllerCount() < 1) && (is_first_time_on_legal_screen))
-        {
-            frontChangeMenu(MENU_NO_CONTROLLERS, TRUE);
-        }
-        else
-        {
-            frontChangeMenu(MENU_NINTENDO_LOGO, TRUE);
-        }
-    }
-    else if (joyGetButtonsPressedThisFrame(PLAYER_1, ANY_BUTTON) && (!is_first_time_on_legal_screen))
-    {
-        if (!is_first_time_on_main_menu)
-        {
-            frontChangeMenu(MENU_FILE_SELECT, TRUE);
-        }
-        else
-        {
-            frontChangeMenu(MENU_NINTENDO_LOGO, TRUE);
-        }
-    }
-}
-
-
-/**
- * Render a string of standard text on the legal screen e.g. "TWYCROSS BOARD OF GAME CLASSIFICATION"
- */
-#ifdef PORT
-Gfx *display_aligned_white_text_to_screen(Gfx *dl, s32 arg1, s32 arg2, s32 halign, s32 valign, u8 *text, struct fontchar *arg6, struct font *arg7)
-#else
-Gfx *display_aligned_white_text_to_screen(Gfx *dl, s32 arg1, s32 arg2, s32 halign, s32 valign, u8 *text, s32 arg6, s32 arg7)
-#endif
-{
-    s32 sp4C;
-    s32 sp48;
-    s32 x;
-    s32 y;
-
-    sp48 = 0;
-    sp4C = 0;
-    textMeasure(&sp4C, &sp48, text, ptrFontZurichBoldChars, ptrFontZurichBold, 0);
-    x = arg1 - ((s32) (halign * sp48) / 2);
-    y = arg2 - ((s32) (valign * sp4C) / 2);
-
-    return textRender(dl, &x, &y, text, PORT_N64PTR(struct fontchar, arg6), PORT_N64PTR(struct font, arg7), -1, viGetX(), viGetY(), 0, 0);
-}
-
-
-Gfx *constructor_menu00_legalscreen(Gfx *DL)
-{
-    struct legal_screen_text *legal_text_end;
-    struct ModelRenderData renderdata;
-    Mtxf *temp;
-    Mtxf lookatmtx;
-    s32 i;
-    u8 *txt;
-    Mtxf tmpmtx;
-#ifdef PORT
-    /* PC port (D50): on N64 this pointer is used uninitialized at the lookat
-     * call below — the R4300 register happens to hold a readable address and
-     * the result is zeroed by `* 0.0f` anyway. The x86-64 compiler folds the
-     * UB read to NULL (cvtsi2ssl 0x4) and faults. Seeding it with the array
-     * the function assigns a few lines later keeps the value deterministic;
-     * v_pos is s32 so `v_pos * 0.0f` is ±0.0f either way — identical lookat.
-     * N64 build untouched (no -DPORT). */
-    struct legal_screen_text *legal_text_ptr = legalpage_text_array;
-#else
-    struct legal_screen_text *legal_text_ptr;
-#endif
-
-    renderdata = legalscreen_MRD;
-    
-    DL = clear_framebuffer_black(DL);
-    
-    matrix_4x4_set_lookat_target(&lookatmtx, 0.0f, 0.0f, 4000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, legal_text_ptr->v_pos * 0.0f);
-    
-    renderdata.basemtx = &lookatmtx;
-    renderdata.mtxlist = (Mtxf *) dynAllocate(logoinst->obj->numMatrices << 6);
-    
-    matrix_4x4_copy(&lookatmtx, renderdata.mtxlist);
-    
-    logoinst->render_pos = (union RenderPosView *) renderdata.mtxlist;
-    
-    modelUpdateNodeRelations(logoinst);
-    
-    renderdata.flags = 3;
-    renderdata.zbufferenabled = 0;
-    renderdata.gdl = DL;
-    
-    subdraw(&renderdata, logoinst);
-    
-    DL = renderdata.gdl;
-    
-    for (i = 0; i < logoinst->obj->numMatrices; i++)
-    {
-        matrix_4x4_copy((Mtxf *)&((s8 *)logoinst->render_pos)[i * 0x40], &tmpmtx);
-        matrix_4x4_f32_to_s32(&tmpmtx, &((Mtxf *) logoinst->render_pos)[i]);
-    }
-    
-    DL = microcode_constructor(DL);
-    
-    legal_text_ptr = legalpage_text_array;
-#ifdef PORT
-    /* D164: N64 relied on the linker placing legalscreen_MRD immediately after
-     * legalpage_text_array; mingw/GCC reorders file-scope globals so that
-     * address is bogus (lands 0x60 before the array) -> loop ran once. */
-    legal_text_end = legalpage_text_array + (sizeof(legalpage_text_array) / sizeof(legalpage_text_array[0]));
-#else
-    legal_text_end = (struct legal_screen_text *)&legalscreen_MRD;
-#endif
-
-    do
-    {
-        DL = display_aligned_white_text_to_screen(DL, legal_text_ptr->h_pos, legal_text_ptr->v_pos, legal_text_ptr->halign, legal_text_ptr->valign, langGet(legal_text_ptr->txtID), ptrFontZurichBoldChars, ptrFontZurichBold);
-        legal_text_ptr++;
-    }
-    while (legal_text_ptr < legal_text_end);
-    
-    return DL;
-}
-
 
 void reset_menutimer(void) {
     g_MenuTimer = 0;
@@ -1647,405 +1466,6 @@ Gfx * constructor_menu17_switchscreens(Gfx * DL)
 
 
 
-
-//********************************************************************************************************
-//NINTENDO LOGO
-//********************************************************************************************************
-void init_menu01_nintendo(void)
-{
-    struct coord3d pos;
-
-    g_MenuTimer = 0;
-    pos = nintendologo_pos;
-    load_object_fill_header(PitemZ_entries[PROP_NINTENDOLOGO].header, PitemZ_entries[PROP_NINTENDOLOGO].filename, ptr_logo_and_walletbond_DL, 0x3c000, 0);
-    modelCalculateRwDataLen(PitemZ_entries[PROP_NINTENDOLOGO].header);
-    logoinst = modelmgrInstantiateModel(PitemZ_entries[PROP_NINTENDOLOGO].header);
-    modelSetScale(logoinst, 1.0f);
-    setsuboffset(logoinst, &pos);
-    musicTrack1Play(M_INTROSWOOSH);
-    maybe_is_in_menu = TRUE;
-    ninLogoRotRate = -1.39626348019f;
-    ninLogoScale = 0.0183333326131f;
-}
-
-
-
-
-void update_menu01_nintendo(void)
-{
-    clear_model_obj(logoinst);
-}
-
-
-
-
-void interface_menu01_nintendo(void)
-{
-#ifdef REFRESH_PAL
-/*~= 8.32 * 50 + 1*/
-#define NINTENDO_TIMER_MAX 417
-#else
-/*~= 8.32 * 60 + 1*/
-#define NINTENDO_TIMER_MAX 501
-#endif
-
-    viSetFovY(FOV_Y_F);
-    viSetAspect(ASPECT_RATIO_SD);
-    viSetZRange(100.0f, 10000.0f);
-    viSetUseZBuf(0);
-
-    g_MenuTimer += g_ClockTimer;
-
-    if (g_MenuTimer >= NINTENDO_TIMER_MAX)
-    {
-        frontChangeMenu(MENU_RAREWARE_LOGO, TRUE);
-    }
-    else if (joyGetButtonsPressedThisFrame(PLAYER_1, ANY_BUTTON))
-    {
-        if (!is_first_time_on_main_menu)
-        {
-            frontChangeMenu(MENU_FILE_SELECT, TRUE);
-        }
-        else
-        {
-            prev_keypresses = TRUE;
-            frontChangeMenu(MENU_RAREWARE_LOGO, TRUE);
-        }
-    }
-}
-
-
-Gfx *constructor_menu01_nintendo(Gfx *DL)
-{
-    ModelRenderData ninlogo;
-    s32 padding;
-    s32 ambiantlight;
-    Mtxf ninlogoMtxf;
-    s32 i;
-
-    ninlogo = nintendologo_MRD;
-
-    DL = clear_framebuffer_black(DL);
-
-    // Lights macro? These need to be on one line.
-    gSPNumLights(DL++, 1); \
-    gSPLight(DL++, &ninlogolight.l[0], 1); \
-    gSPLight(DL++, &ninlogolight, 2);
-
-#if defined(VERSION_EU)
-    // 0x100000000 ? 0xFFFECD34 = 0x132CC (78540 decimal)
-    ambiantlight = 0xFF - ((s32) ((g_MenuTimer * 0xFF) + 0xFFFECD34) / 83);
-#else
-    // 0x100000000 ? 0xFFFE8F72 = 0x1708E (94350 decimal)
-    ambiantlight = 0xFF - ((s32) ((g_MenuTimer * 0xFF) + 0xFFFE8F72) / 100);
-#endif
-    if (ambiantlight >= 0x100)
-    {
-        ambiantlight = 0xff;
-    }
-    if (ambiantlight < 0)
-    {
-        ambiantlight = 0;
-    }
-
-    ninlogolight.a.l.colc[2] = ambiantlight;
-    ninlogolight.a.l.colc[1] = ambiantlight;
-    ninlogolight.a.l.colc[0] = ambiantlight;
-    ninlogolight.a.l.col[2] = ambiantlight;
-    ninlogolight.a.l.col[1] = ambiantlight;
-    ninlogolight.a.l.col[0] = ambiantlight;
-
-#if defined(VERSION_EU)
-    ninLogoRotRate += 0.0209439527243f;
-#else
-    ninLogoRotRate += 0.017453292f;
-#endif
-
-    // Not sure if this is actually an `if` block, but the sp90 variable
-    // needs to be declared here for the stack to match.
-    if(1)
-    {
-        Mtxf tmpMtx;
-
-        matrix_4x4_set_rotation_around_y(ninLogoRotRate, &tmpMtx);
-        matrix_scalar_multiply_3(ninLogoScale, (f32*)&tmpMtx);
-
-#if defined(VERSION_EU)
-        ninLogoScale *= 1.09647190571f;
-#else
-        ninLogoScale *= 1.07977f;
-#endif
-        if (ninLogoScale > 1.1f)
-        {
-            ninLogoScale = 1.1f;
-        }
-
-        matrix_4x4_set_lookat_target(&ninlogoMtxf, 0.0f, 0.0f, 4000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-        matrix_4x4_multiply_in_place(&ninlogoMtxf, &tmpMtx);
-        matrix_4x4_copy(&tmpMtx, &ninlogoMtxf);
-    }
-
-    ninlogo.basemtx = &ninlogoMtxf;
-
-    ninlogo.mtxlist = dynAllocate(logoinst->obj->numMatrices << 6);
-
-    matrix_4x4_copy(&ninlogoMtxf, ninlogo.mtxlist);
-
-    logoinst->render_pos = (union RenderPosView*)ninlogo.mtxlist;
-
-    modelUpdateNodeRelations(logoinst);
-
-    ninlogo.flags = 3;
-    ninlogo.zbufferenabled = FALSE;
-    ninlogo.gdl = DL;
-
-    subdraw(&ninlogo, logoinst);
-
-    DL = ninlogo.gdl;
-
-    for (i=0; i<logoinst->obj->numMatrices; i++)
-    {
-        Mtxf tmpMtxf;
-        s32 padding2;
-
-        // hack: source address steps by sizeof(Mtxf), but can't get that to match
-        matrix_4x4_copy(&((s8*)logoinst->render_pos)[i*0x40], &tmpMtxf);
-        matrix_4x4_f32_to_s32(&tmpMtxf, &((Mtxf*)logoinst->render_pos)[i]);
-
-        if(i);
-    }
-
-    return DL;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-//********************************************************************************************************
-//RARE LOGO
-//********************************************************************************************************
-
-/*
- * Address: 0x7F008B58
-*/
-void init_menu02_rarelogo(void)
-{
-    setupRarewareLogoData(ptr_logo_and_walletbond_DL, 0x78000);
-    sndPlaySfx(g_musicSfxBufferPtr, RARELOGO_SFX, 0);
-}
-
-void update_menu02_rareware(void) {
-    return;
-}
-
-void interface_menu02_rareware(void)
-{
-    viSetUseZBuf(FALSE);
-    if (isGunBarrelInMode2())
-    {
-        frontChangeMenu(MENU_EYE_INTRO, TRUE);
-        return;
-    }
-    if (joyGetButtonsPressedThisFrame(PLAYER_1, ANY_BUTTON))
-    {
-        if (!is_first_time_on_main_menu)
-        {
-            frontChangeMenu(MENU_FILE_SELECT, TRUE);
-            return;
-        }
-        prev_keypresses = TRUE;
-        frontChangeMenu(MENU_EYE_INTRO, TRUE);
-    }
-}
-
-Gfx * constructor_menu02_rareware(Gfx * DL) {
-    return retrieve_display_rareware_logo(DL);
-}
-
-
-
-
-
-
-
-
-
-
-
-//********************************************************************************************************
-//GUNBARREL
-//********************************************************************************************************
-void init_menu03_gunbarrel(void) {
-    initializeGunBarrelIntro(ptr_logo_and_walletbond_DL, 0x78000);
-    musicTrack1Play(M_INTRO);
-    maybe_is_in_menu = TRUE;
-}
-
-/*
- * Address: 0x7F00920C
-*/
-void update_menu_03_gunbarrel(void) {
-    clearChrGunModelInstances();
-}
-
-void interface_menu03_eye(void) {
-    viSetUseZBuf(FALSE);
-    if (isGunBarrelInMode9()) {
-        frontChangeMenu(MENU_GOLDENEYE_LOGO, TRUE);
-        return;
-    }
-    if (joyGetButtonsPressedThisFrame(PLAYER_1, ANY_BUTTON)) {
-        if (!is_first_time_on_main_menu) {
-            frontChangeMenu(MENU_FILE_SELECT, TRUE);
-            return;
-        }
-        prev_keypresses = TRUE;
-        frontChangeMenu(MENU_GOLDENEYE_LOGO, TRUE);
-    }
-}
-
-Gfx * constructor_menu03_eye(Gfx * DL) {
-    return renderGunbarrelEyeIntroSequence (DL);
-}
-
-
-
-
-//********************************************************************************************************
-//GOLDENEYE LOGO
-//********************************************************************************************************
-void init_menu04_goldeneyelogo(void)
-{
-    struct coord3d pos;
-
-    g_MenuTimer = 0;
-    pos = goldeneyelogo_pos;
-    load_object_fill_header(PitemZ_entries[PROP_GOLDENEYELOGO].header, PitemZ_entries[PROP_GOLDENEYELOGO].filename, ptr_logo_and_walletbond_DL, 0x3c000, 0);
-    modelCalculateRwDataLen(PitemZ_entries[PROP_GOLDENEYELOGO].header);
-    logoinst = modelmgrInstantiateModel(PitemZ_entries[PROP_GOLDENEYELOGO].header);
-    #ifdef DEBUG
-        assert(logoinst);
-    #endif
-
-    modelSetScale(logoinst, 1.0f);
-    setsuboffset(logoinst, &pos);
-}
-
-
-
-
-
-void update_menu04_goldeneye(void) {
-    is_first_time_on_main_menu = FALSE;
-    clear_model_obj(logoinst);
-}
-
-void interface_menu04_goldeneyelogo(void)
-{
-#ifdef REFRESH_PAL
-#define GOLDENEYELOGO_TIMER_1 50*3
-#define GOLDENEYELOGO_TIMER_2 (50/2)*3
-#else
-#define GOLDENEYELOGO_TIMER_1 60*3
-#define GOLDENEYELOGO_TIMER_2 (60/2)*3
-#endif
-
-    viSetFovY(FOV_Y_F);
-    viSetAspect(ASPECT_RATIO_SD);
-    viSetZRange(100.0f, 10000.0f);
-    viSetUseZBuf(0);
-    g_MenuTimer += g_ClockTimer;
-    if (((!is_first_time_on_main_menu) || (GOLDENEYELOGO_TIMER_1 < g_MenuTimer)) ||
-       ((ge_logo_bool && (GOLDENEYELOGO_TIMER_2 < g_MenuTimer)))) {
-        if (g_MenuTimer > GOLDENEYELOGO_TIMER_1) {
-            if (prev_keypresses) {
-                frontChangeMenu(MENU_FILE_SELECT,TRUE);
-            }
-            else {
-                do_extended_cast_display(FALSE);
-                frontChangeMenu(MENU_DISPLAY_CAST,TRUE);
-            }
-        }
-        else {
-            if ((joyGetButtonsPressedThisFrame(PLAYER_1,ANY_BUTTON)) || ((is_first_time_on_main_menu && ge_logo_bool))) {
-                frontChangeMenu(MENU_FILE_SELECT,TRUE);
-            }
-        }
-    }
-    else {
-        if (joyGetButtonsPressedThisFrame(PLAYER_1,ANY_BUTTON)) {
-            ge_logo_bool = TRUE;
-        }
-    }
-}
-
-
-
-Gfx *constructor_menu04_goldeneyelogo(Gfx *DL)
-{
-    ModelRenderData gelogo;
-    s32 padding[2];
-    Mtxf logoMatrix;
-    s32 i;
-    LookAt * logoLookAt;
-    Mtxf logoReflectMtx;
-
-    gelogo = goldeneyelogo_MRD;
-
-    DL = viSetFillColor(DL, 0, 0, 0);
-    DL = viFillScreen(DL);
-
-    logoLookAt = (LookAt *)dynAllocateLights(2);
-    guLookAtReflect(&logoReflectMtx, logoLookAt, 0.0f, 0.0f, 4000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-
-    // Lights macro? These need to be on one line.
-    gSPNumLights(DL++, 1); \
-    gSPLight(DL++, &gelogolight.l[0], 1); \
-    gSPLight(DL++, &gelogolight, 2);
-
-    // gSPLookAt macro expands to gSPLookAtX + gSPLookAtY
-    gSPLookAt(DL++, logoLookAt);
-
-    matrix_4x4_set_lookat_target(&logoMatrix, 0.0f, 0.0f, 3000.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
-    gelogo.basemtx = &logoMatrix;
-    gelogo.mtxlist = dynAllocate(logoinst->obj->numMatrices << 6);
-
-    matrix_scalar_multiply(1.2f, logoMatrix.m[0]);
-    matrix_4x4_copy(&logoMatrix, gelogo.mtxlist);
-    logoinst->render_pos = (union RenderPosView*)gelogo.mtxlist;
-
-    modelUpdateNodeRelations(logoinst);
-
-    gelogo.flags = 3;
-    gelogo.zbufferenabled = FALSE;
-    gelogo.gdl = DL;
-
-    subdraw(&gelogo, logoinst);
-
-    DL = gelogo.gdl;
-
-    for (i=0; i<logoinst->obj->numMatrices; i++)
-    {
-        Mtxf tempMtxf;
-        s32 padding2;
-
-        // hack: source address steps by sizeof(Mtxf), but can't get that to match
-        matrix_4x4_copy(&((s8*)logoinst->render_pos)[i*0x40], &tempMtxf);
-        matrix_4x4_f32_to_s32(&tempMtxf, &((Mtxf*)logoinst->render_pos)[i]);
-
-        if(i);
-    }
-
-    return DL;
-}
 
 
 
@@ -2229,16 +1649,6 @@ void init_menu05_fileselect(void)
     }
     g_AppendCheatSinglePlayer = FALSE;
     g_AppendCheatMultiPlayer = FALSE;
-}
-
-
-
-void update_menu05_filesel(void)
-{
-    if ((menu_update == MENU_LEGAL_SCREEN) || (maybe_prev_menu == MENU_LEGAL_SCREEN))
-    {
-        frontCleanUpWalletBond();
-    }
 }
 
 
@@ -2506,15 +1916,6 @@ s32 interface_menu05_fileselect(void)
 #endif
     }
 
-    // Change to the legal screen if 30 seconds of no input have elapsed
-#if defined(VERSION_EU)
-    if (g_MenuTimer >= 1501) // PAL (50fps): 30 seconds + 1 frame
-#else
-    if (g_MenuTimer >= 1801) // NTSC (60fps): 30 seconds + 1 frame
-#endif
-    {
-        frontChangeMenu(MENU_LEGAL_SCREEN, TRUE);
-    }
 }
 
 
@@ -8492,7 +7893,7 @@ void interface_menu18_displaycast(void)
         }
         else
         {
-            select_ramrom_to_play();
+            frontChangeMenu(MENU_FILE_SELECT, 1);
         }
     }
 
@@ -8968,12 +8369,6 @@ void menu_init(void)
         && (current_menu != MENU_SWITCH_SCREENS))
     {
         switch(current_menu) {
-            case MENU_LEGAL_SCREEN:           update_menu00_legalscreen();          break;
-            case MENU_NINTENDO_LOGO:          update_menu01_nintendo();             break;
-            case MENU_RAREWARE_LOGO:          update_menu02_rareware();             break;
-            case MENU_EYE_INTRO:              update_menu_03_gunbarrel();                 break;
-            case MENU_GOLDENEYE_LOGO:         update_menu04_goldeneye();            break;
-            case MENU_FILE_SELECT:            update_menu05_filesel();              break;
             case MENU_MODE_SELECT:            update_menu06_modesel();              break;
             case MENU_MISSION_SELECT:         update_menu07_missionsel();           break;
             case MENU_DIFFICULTY:             update_menu08_difficulty();           break;
@@ -9007,11 +8402,6 @@ void menu_init(void)
         maybe_prev_menu = MENU_INVALID;
 
         switch(current_menu) {
-            case MENU_LEGAL_SCREEN:           init_menu00_legalscreen();            break;
-            case MENU_NINTENDO_LOGO:          init_menu01_nintendo();               break;
-            case MENU_RAREWARE_LOGO:          init_menu02_rarelogo();               break;
-            case MENU_EYE_INTRO:              init_menu03_gunbarrel();               break;
-            case MENU_GOLDENEYE_LOGO:         init_menu04_goldeneyelogo();          break;
             case MENU_FILE_SELECT:            init_menu05_fileselect();             break;
             case MENU_MODE_SELECT:            init_menu06_modeselect();             break;
             case MENU_MISSION_SELECT:         init_menu07_missionselect();          break;
@@ -9036,12 +8426,7 @@ void menu_init(void)
     }
 
     switch(current_menu) {
-        case MENU_LEGAL_SCREEN:           interface_menu00_legalscreen();           break;
         case MENU_SWITCH_SCREENS:         interface_menu17_switchscreens();         break;
-        case MENU_NINTENDO_LOGO:          interface_menu01_nintendo();              break;
-        case MENU_RAREWARE_LOGO:          interface_menu02_rareware();              break;
-        case MENU_EYE_INTRO:              interface_menu03_eye();                   break;
-        case MENU_GOLDENEYE_LOGO:         interface_menu04_goldeneyelogo();         break;
         case MENU_FILE_SELECT:            interface_menu05_fileselect();            break;
         case MENU_MODE_SELECT:            interface_menu06_modesel();               break;
         case MENU_MISSION_SELECT:         interface_menu07_missionsel();            break;
@@ -9062,11 +8447,7 @@ void menu_init(void)
         case MENU_DISPLAY_CAST:           interface_menu18_displaycast();           break;
         case MENU_SPECTRUM_EMU:           interface_menu19_spectrum();              break;
         case MENU_RUN_STAGE:
-            if (interface_menu0B_runstage())
-            {
-                frontChangeMenu(MENU_LEGAL_SCREEN, 1);
-            }
-            else if (gamemode == GAMEMODE_MULTI)
+            if (gamemode == GAMEMODE_MULTI)
             {
                 frontChangeMenu(MENU_MP_OPTIONS, 1);
             }
@@ -9106,23 +8487,8 @@ Gfx * menu_jump_constructor_handler(Gfx *DL)
     }
 #endif
     switch(current_menu) {
-        case MENU_LEGAL_SCREEN:
-            DL = constructor_menu00_legalscreen(DL);
-            break;
         case MENU_SWITCH_SCREENS:
             DL = constructor_menu17_switchscreens(DL);
-            break;
-        case MENU_NINTENDO_LOGO:
-            DL = constructor_menu01_nintendo(DL);
-            break;
-        case MENU_RAREWARE_LOGO:
-            DL = constructor_menu02_rareware(DL);
-            break;
-        case MENU_EYE_INTRO:
-            DL = constructor_menu03_eye(DL);
-            break;
-        case MENU_GOLDENEYE_LOGO:
-            DL = constructor_menu04_goldeneyelogo(DL);
             break;
         case MENU_FILE_SELECT:
             DL = constructor_menu05_fileselect(DL);

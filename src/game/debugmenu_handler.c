@@ -454,11 +454,6 @@ s32 debug_menu_processor(s8 stick_h, s8 stick_v, u16 button_held, u16 button_pre
 
         show_debug_menu_flag = varv0;
 
-        if (varv0)
-        {
-            stop_recording_ramrom(button_held);
-        }
-
         return show_debug_menu_flag;
     }
     else
@@ -667,34 +662,6 @@ s32 debug_menu_processor(s8 stick_h, s8 stick_v, u16 button_held, u16 button_pre
 
             case DEB_RNDWALK: //rnd walk
               break;
-
-            case DEB_RECRAMROM: // record ramrom
-                setRamRomRecordSlot(0);
-                break;
-
-            case DEB_RECORD1: // record 1
-                setRamRomRecordSlot(1);
-                break;
-
-            case DEB_RECORD2: // record 2
-                setRamRomRecordSlot(2);
-                break;
-
-            case DEB_RECORD3: // record 3
-                setRamRomRecordSlot(3);
-                break;
-
-            case DEB_REPLAYRAMROM: // replay ramrom
-                replay_recorded_ramrom_from_indy();
-                break;
-
-            case DEB_SAVERAMROM: // save ramrom
-                save_ramrom_to_devtool();
-                break;
-
-            case DEB_LOADRAMROM: // load ramrom
-                load_ramrom_from_devtool();
-                break;
 
             case DEB_AUTOAIMY: // auto y aim
                 currentPlayerSetYAutoAimEnabled(currentPlayerGetYAutoAimEnabled() == 0);

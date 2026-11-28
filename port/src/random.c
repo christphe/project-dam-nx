@@ -4,7 +4,6 @@
  * genuine gameplay logic, so a no-op would silently corrupt behaviour.
  *
  *   - randomGetNextFrom() feeds the CRC in src/game/crc.c
- *   - g_randomSeed is persisted in replay state (src/game/ramromreplay.c)
  *   - randomGetNext() drives RANDOMFRAC()/RANDOMGETNEXT_F32() (bondconstants.h)
  *
  * Also ports src/game/chrObjRandom.s: the character-AI PRNG (chroid.c),
