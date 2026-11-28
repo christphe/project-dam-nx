@@ -14,7 +14,7 @@
 
 ## Non-negotiables
 
-1. **No N64 build (withdrawn 2026-11-27).** The goal is a modern engine that runs the GoldenEye campaign, not a matching N64 ROM. The N64 `Makefile`, `rsp/`, `ld/` and the N64 build's parts of `tools/` are not maintained and may be changed or removed.
+1. **No N64 build (withdrawn 2026-11-27).** The goal is a modern engine that runs the GoldenEye campaign, not a matching N64 ROM. The N64 build is removed (2026-11-28): the `Makefile`, `ld/`, the N64 tools and extraction scripts, the libultra I/O and OS sources and the boot code that only it compiled. What the PC build or its tools read stays. The removed files are in git history (`git log --diff-filter=D --stat`) and in the `upstream` remote.
 2. **`src/game` may be changed (rule withdrawn 2026-11-27).** The decompiled code is being moved out and removed, so it is edited or deleted like any other code. Diagnosis comes first: name the exact cause before the fix. A change in behaviour is stated in the PR (what it did before, what it does now).
 3. **Region macros belong to the PC build.** `CMakeLists.txt` `REGION_DEFS` no longer has to follow the N64 Makefile (finding A1 is history).
 4. **`src/libultrare/Makefile.libultrare` is ground truth** for original-vs-Rare libultra files (finding B3). The PC build compiles `libultra/audio`, `libultrare/audio`, `libultra/gu` and `libultrare/io/vitbl.c` only. Every other `io/` and `os/` file is excluded and shimmed in `port/src/libultra.c`.
