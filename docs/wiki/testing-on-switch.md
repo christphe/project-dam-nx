@@ -50,6 +50,7 @@ state you want to look at. Commands go through [dev.py](dev-py.md).
 | `GE_ROM_LABELS=1` | Dev flag, until the ROM banks are removed: read the game's text from the ROM's language banks. Without it the text comes only from the asset packs' `labels/text_<lang>.json`; a missing file shows every string as `[0x....]` and logs one warning (`port/src/labels.c`). |
 | `GE_LABELS_CHECK=1` | Compare every language bank the game loads with the pack's strings and log `labels check:` lines with the counts (same / differ / only ROM / only pack). |
 | `GE_ROM_FONTS=1` | Dev flag, until the ROM path is removed: read the fonts from the ROM. Without it the fonts come only from the asset packs and the mod ([fonts.md](../specs/fonts.md)); a font in none of them is empty (nothing drawn, one warning in the log), the ROM is not read. `GE_FONTS_CHECK=1` compares pack and ROM at the first font load and logs the counts (dev). |
+| `GE_ROM_LEVELS=1` | Dev flag, until the ROM path is removed: draw the level's rooms from the ROM's display lists. Without it the decor comes only from the asset packs' `levels/<level>/<level>.gltf` (`port/src/leveldecor.c`); a level or room the stack does not have is not drawn (one warning in the log), the ROM's lists are not used. The game still picks the visible rooms, and the collision and setups stay on the ROM. |
 
 Every `GE_*` probe, with its file and status: `docs/dev/GE-ENV-PROBES.md`. `python
 tools_pc/gen_env_probes.py` reports the probes it misses and today's file:line of each one.

@@ -30,6 +30,8 @@ Two classes:
 | `GE_ROM_SOUNDS=1` | `port/src/sounds.c:269` | Sound effects from the ROM's bank instead of the packs' `sounds/sfx/` (#171). | live tooling |
 | `GE_ROM_FONTS=1` | `port/src/fonts.c:225` | The fonts from the ROM instead of the packs' `fonts/` (#171). | live tooling |
 | `GE_FONTS_CHECK=1` | `port/src/fonts.c:232` | Compare the pack's fonts with the ROM's at the first font load and log the counts. | live tooling |
+| `GE_ROM_LEVELS=1` | `port/src/leveldecor.c` | The level's rooms from the ROM's display lists instead of the packs' `levels/<level>/<level>.gltf` (#171). | live tooling |
+| `GE_LDSTATS=<frame>` | `port/src/leveldecor.c`, `port/fast3d/gfx_leveldecor.inc` | On that frame, one `LDSTAT` log line per room list drawn (pack path) or walked (ROM path, bracketed): triangles and world bounds, for the pack-vs-ROM geometry check (#171). | live diag |
 | `GE_INTERPLOG` | `port/src/libultra.c:2032` | D578 IPLOG pacing trace (`=<n>` caps the lines). | live diag |
 | `GE_INTERP_ALPHA1` | `port/src/libultra.c:2039` | D578: every interpolated pass exact (identity check). | live diag |
 | `GE_INTERP_FORCE` | `port/src/video.c:1245` | D578: interpolate even when the display refresh is not above the VI rate. | live diag |
