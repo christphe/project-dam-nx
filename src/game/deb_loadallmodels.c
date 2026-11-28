@@ -5,7 +5,6 @@
 #include "chr_b.h"
 #include "deb_loadallmodels.h"
 #include "loadobjectmodel.h"
-#include "aicommands2.h"
 #include "dyn.h"
 #include "memp.h"
 #include <macro.h>

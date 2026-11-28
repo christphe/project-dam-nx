@@ -587,7 +587,7 @@ static void writeModels(FILE *f)
     fprintf(f, "\n  ]\n");
 }
 
-extern char *setup_text_pointers[];   /* src/game/chraidata.c: stage number -> "Usetup<name>Z" */
+extern char *setup_text_pointers[];   /* src/game/chrai.c: stage number -> "Usetup<name>Z" */
 
 static int writeJson(void)
 {

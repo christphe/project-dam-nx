@@ -17,7 +17,6 @@
 #include "cheat.h"
 #include "chr.h"
 #include "chrai.h"
-#include "chraidata.h"
 #include "chraction.h"
 #include "explosion.h"
 #include "file.h"

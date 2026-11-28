@@ -284,13 +284,8 @@ $(BUILD_DIR)/$(OBSEGMENT): $(OBSEG_RZ) $(IMAGE_OBJS)
 
 
 #Build C files in src/
-# convert AI_PRINT commands from readable to byte-array
 $(BUILD_DIR)/src/%.o: src/%.c
-	@if [ "$$(basename $<)" = "chraidata.c" ]; then \
-		$(ConvertAIPRINT) $< | $(CC) -c $(CFLAGS) tools/include-stdin.c -o $@ $(OPTIMIZATION); \
-	else \
-		$(CC) -c $(CFLAGS) -o $@ $(OPTIMIZATION) $<; \
-	fi
+	$(CC) -c $(CFLAGS) -o $@ $(OPTIMIZATION) $<
 
 
 #Build RamRom

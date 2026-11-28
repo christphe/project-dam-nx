@@ -86,7 +86,6 @@
       build/OUTCODE/src/game/debugmenu_08FE00.o (.rodata);
       build/OUTCODE/src/game/debugmenu_handler.o (.rodata);
       build/OUTCODE/src/game/debug_camera.o (.rodata);
-      build/OUTCODE/src/game/chraidata.o (.rodata);
       build/OUTCODE/src/game/pobjdata.o (.rodata);
       build/OUTCODE/src/game/gobjdata.o (.rodata);
       build/OUTCODE/src/game/gobjdata2.o (.rodata);

@@ -24,7 +24,7 @@
 #include "texpack.h"   /* a mod's textures/ while its mission is active */
 #include "game/lv.h"   /* lvlGetSelectedDifficulty */
 
-extern char *setup_text_pointers[];   /* src/game/chraidata.c: stage number -> "Usetup<name>Z" */
+extern char *setup_text_pointers[];   /* src/game/chrai.c: stage number -> "Usetup<name>Z" */
 int  pccgRowData(const char *name, const uint8_t **data, uint32_t *size);
 int  pccgServeRow(const char *name, const uint8_t *data, uint32_t size);
 void pccgRestoreRow(const char *name);

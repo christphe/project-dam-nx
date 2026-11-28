@@ -9,7 +9,6 @@
 #include "cheat.h"
 #include "chr.h"
 #include "chraction.h"
-#include "chraidata.h"
 #include "file.h"
 #include "gun.h"
 #include "initanitable.h"
@@ -174,16 +173,7 @@ AIRecord *ailistFindById(s32 ID)
             }
         }
     }
-    else
-    {
-        for (i = 0; g_GlobalAILists[i].ailist; i++)
-        {
-            if (g_GlobalAILists[i].ID == ID)
-            {
-                return g_GlobalAILists[i].ailist;
-            }
-        }
-    }
+    /* the game's 18 global AI lists were code (chraidata.c) run by the removed interpreter: no list for those ids */
     return NULL;
 }
 
@@ -201,3 +191,18 @@ PathRecord *pathFindById(s32 ID)
 
     return NULL;
 }
+
+/*D:800374E4 Also happens to be the same indices as levelID */
+char *setup_text_pointers[] = {
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "UsetupsevbunkerZ",
+    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,"UsetupsiloZ",
+    "UsetupsevbunkerZ","UsetupstatueZ","UsetupcontrolZ","UsetuparchZ","UsetuptraZ",
+    "UsetupdestZ","UsetupsevbZ","UsetupaztZ","UsetuppeteZ","UsetupdepoZ","UsetuprefZ",
+    "UsetupcrypZ","UsetupdamZ","UsetuparkZ","UsetuprunZ","UsetupsevxZ","UsetupjunZ",
+    "UsetupdishZ","UsetupcaveZ","UsetupcatZ","UsetupcradZ","UsetupshoZ","UsetupsevxbZ",
+    "UsetupeldZ","UsetupimpZ","UsetupashZ","UsetuplueZ","UsetupameZ","UsetupritZ",
+    "UsetupoatZ","UsetupearZ","UsetupleeZ","UsetuplipZ","UsetuplenZ","UsetupwaxZ",
+    "UsetuppamZ", NULL, NULL
+};
+
+
