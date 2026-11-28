@@ -43,9 +43,9 @@ At boot `romdataInit()` calls `romConvertEnsureSidecars()` (`port/src/romconvert
 writes the trees into `data/`, and checks again. It takes a few seconds and runs once.
 
 The models tree also holds `converter.ver` (`CV_CONVERTER_VERSION` in `port/convert/convert.h`;
-a missing file counts as 1). When it differs from the running converter's, boot re-runs only the
-models step, once. Bump the version whenever a converter change alters model output
-([model-subdivision.md](model-subdivision.md)).
+a missing file counts as 1). When it differs from the running converter's, boot converts the whole
+ROM again, once (version 4 changed the setup files, so not only the models). Bump the version
+whenever a converter change alters its output ([model-subdivision.md](model-subdivision.md)).
 
 After the sidecars, the same call makes sure the game's base asset pack exists:
 `$S/../assetpacks/ge007.passets`, an uncompressed tar holding the textures, levels, models,

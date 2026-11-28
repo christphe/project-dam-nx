@@ -43,15 +43,18 @@ spawn(function()
     end
 end)
 
--- Cinematics 1: third-person orbit around the couple (the midpoint of pads 0x2C and 0x2D). Distance 100, 18 units
--- up, aimed 70 units below, starting at 0x1C71 (40 degrees), 46/65536 turn per tick (about 15.2 degrees per second).
+-- Cinematics 1: third-person orbit around the couple (the midpoint of pads 0x2C and 0x2D), starting at 0x1C71 (40
+-- degrees). The distance, the height and the speed are measured on the game's own ending (its camera logged frame by
+-- frame): a circle of radius 300 around the couple's feet, the camera 100 above them, 18/65536 of a turn per tick (about
+-- 5.9 degrees per second). The pads stand about 207 units above the feet, hence the look height.
+
 camera.orbit({
     centre = { pad(0x2C), pad(0x2D) },
-    distance = 100,
-    height = 18,
-    look_height = -70,
+    distance = 300,
+    height = 100,
+    look_height = -207,
     start_angle = 0x1C71 * 360 / 65536,
-    speed = 46 * 60 * 360 / 65536,
+    speed = 18 * 60 * 360 / 65536,
 })
 
 -- Cinematics 2-5: fade in, then the three lines
@@ -64,11 +67,14 @@ L.top("5009")
 wait(3)
 L.top("500A")
 -- Cinematics 6: the credits, the orbit and the animation loop going on behind them. The level's credit rows (two text
--- ids each) become plain lines: two texts are a role and a name, one text is a centred line, none is a blank row. The
--- game's block starts with the intro's cast list (a few rows, then a long run of blank rows): that is not credits, so
--- the rows before the first long blank run are left out (and kept if there is no such run).
+-- ids each) become lines: two texts are a role and a name, one text is a centred line, none is a blank row. A single
+-- text after a run of blank rows opens a group (a role: "Produced and Directed by") and is a heading, in the title
+-- colour; the single texts right after it (the names) are plain. The game's block starts with the intro's cast list (a
+-- few rows, then a long run of blank rows): that is not credits, so the rows before the first long blank run are left
+-- out (and kept if there is no such run).
 local NO_TEXT = 0x5011   -- "nothing in this column"
 local CAST_GAP = 8       -- blank rows that end the cast list
+local GROUP_GAP = 2      -- blank rows that separate two groups (a role and its names have one between them)
 local ROW = 1.5          -- screen lines of one row of the block
 
 local function credit_text(id: number): string?
@@ -96,6 +102,7 @@ local function credit_lines(skip_cast: boolean): { CreditsLine }
         elseif not started and blanks < CAST_GAP then
             blanks = 0   -- still in the cast list
         else
+            local opens_group = blanks >= GROUP_GAP
             started = true
             blanks = 0
             if pending > 0 then
@@ -104,10 +111,14 @@ local function credit_lines(skip_cast: boolean): { CreditsLine }
             end
             if a ~= nil and b ~= nil then
                 table.insert(lines, { left = a, right = b })
+                pending += ROW - 1
+            elseif opens_group then
+                local heading: CreditsLine = { text = (a or b) :: string, style = "heading" }
+                table.insert(lines, heading)   -- 1.7 lines high: no extra gap after it
             else
                 table.insert(lines, (a or b) :: string)
+                pending += ROW - 1
             end
-            pending += ROW - 1
         end
     end
     return lines

@@ -193,7 +193,7 @@ static int convert_stream(const uint8_t *src, uint32_t start, uint32_t end, CvBu
 }
 
 /* =================================================================== setup */
-enum { K_HEADER, K_GROW, K_INTRO, K_PROPDEFS, K_LEAF_S32, K_LEAF_CSTR, K_LEAF_AI, K_GAP };
+enum { K_HEADER, K_GROW, K_INTRO, K_PROPDEFS, K_LEAF_S32, K_LEAF_CSTR, K_LEAF_AI, K_GAP, K_CREDITS };
 
 static const uint8_t INTRO_SZ[10] = {12, 16, 16, 32, 8, 8, 40, 12, 8, 4};
 
@@ -272,6 +272,7 @@ static int convert_usetup(CvCtx *c, const char *name, const uint8_t *src, uint32
     int have_pd = 0;
     uint32_t intro_end, cum, total_new;
     U32V intro_o = {0}; int intro_t[5000]; int nintro = 0;
+    uint32_t credits_off = 0, credits_end = 0;   /* the credits block an intro record of type 8 points at (Cuba): 12-byte rows */
     int seq = 0;
 
     memset(st, 0, sizeof st);
@@ -300,11 +301,28 @@ static int convert_usetup(CvCtx *c, const char *name, const uint8_t *src, uint32
             t = (int32_t)cv_be32(src, o);
             if (t < 0 || t > 9) { cv_err(c, "%s: unknown intro type %d at %#x", name, t, o); goto done; }
             u32v_push(&intro_o, o); intro_t[nintro++] = t;
+            if (t == 8) credits_off = B32(&s, o + 4);
             o += INTRO_SZ[t];
             if (t == 9) { done_walk = 1; break; }
         }
         if (!done_walk) { cv_err(c, "%s: intro walk runaway", name); goto done; }
         intro_end = o;
+    }
+
+    /* the credits block: rows of {u16 text1, u16 text2, s16 position1, u16 alignment1, s16 position2, u16 alignment2},
+     * ended by the first row whose two text ids are 0 (that row included). It is a region of its own: its offset in the
+     * intro record is relocated with the sections that grow before it, and its u16 fields become little-endian. */
+    if (credits_off) {
+        uint32_t p = credits_off;
+        int found = 0;
+        for (int guard = 0; guard < 100000; guard++) {
+            if (!rd_ok(&s, p, 12)) { cv_err(c, "%s: credits block runs past EOF at %#x", name, p); goto done; }
+            found = !cv_bu16(src, p) && !cv_bu16(src, p + 2);
+            p += 12;
+            if (found) break;
+        }
+        if (!found) { cv_err(c, "%s: credits block has no end", name); goto done; }
+        credits_end = p;
     }
 
     /* leaves */
@@ -361,6 +379,7 @@ static int convert_usetup(CvCtx *c, const char *name, const uint8_t *src, uint32
     }
     if (H[F_INTRO]) regs[nreg++] = (Reg){H[F_INTRO], intro_end, K_INTRO, 0, seq++};
     if (H[F_PROPDEFS]) regs[nreg++] = (Reg){H[F_PROPDEFS], -1, K_PROPDEFS, 0, seq++};
+    if (credits_off) regs[nreg++] = (Reg){credits_off, credits_end, K_CREDITS, 0, seq++};
     for (int i = 0; i < nleaves; i++) regs[nreg++] = (Reg){leaves[i].start, leaves[i].end, leaves[i].kind, 0, seq++};
     for (int i = 0; i < ai.n; i++) regs[nreg++] = (Reg){ai.p[i], -1, K_LEAF_AI, 0, seq++};
     qsort(regs, (size_t)nreg, sizeof *regs, cmp_reg);
@@ -465,7 +484,11 @@ static int convert_usetup(CvCtx *c, const char *name, const uint8_t *src, uint32
                     else cv_le32(out, d + 4 * k, cv_be32(src, o + 4 * k));
                 }
             } else {
-                for (int k = 0; k < INTRO_SZ[t] / 4; k++) cv_le32(out, d + 4 * k, cv_be32(src, o + 4 * k));
+                for (int k = 0; k < INTRO_SZ[t] / 4; k++) {
+                    uint32_t w = cv_be32(src, o + 4 * k);
+                    if (t == 8 && k == 1) w = RELOC(w);   /* the credits block moved with the tables before it */
+                    cv_le32(out, d + 4 * k, w);
+                }
             }
         }
     }
@@ -483,6 +506,8 @@ static int convert_usetup(CvCtx *c, const char *name, const uint8_t *src, uint32
         uint32_t d = RELOC(r->start);
         if (r->kind == K_PROPDEFS) { if (have_pd) memcpy(out + d, pdpc.p, pdpc.len); }
         else if (r->kind == K_LEAF_AI || r->kind == K_GAP) memcpy(out + d, src + r->start, (size_t)(r->end - r->start));
+        else if (r->kind == K_CREDITS)
+            for (uint32_t o = r->start; o < r->end; o += 2) cv_le16(out, d + (o - r->start), cv_bu16(src, o));   /* six u16 / s16 fields a row */
     }
 
     if (cv_buf_put(res, out, total_new)) goto done;

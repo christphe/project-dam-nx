@@ -57,8 +57,9 @@ validates and compresses it. Other files never enter the pass and come out byte-
   `Video.LodDistance` scales both like any game LOD. A body part's game LOD pair is collapsed to
   the detailed mesh.
 - **Re-conversion:** `CV_CONVERTER_VERSION` ([convert.h](../../port/convert/convert.h)) is written
-  to `pcmodels-<region>/converter.ver`. [romconvert.c](../../port/src/romconvert.c) re-runs the
-  models step once at boot when it differs (a missing file counts as version 1).
+  to `pcmodels-<region>/converter.ver`. [romconvert.c](../../port/src/romconvert.c) converts the ROM
+  again once at boot when it differs (a missing file counts as version 1; before version 4 only the
+  models step ran).
 - **Dev switch:** `GE_CONVERT_SUBDIV=0` in the converter's environment gives the pre-subdivision
   output, byte for byte.
 
