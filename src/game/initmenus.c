@@ -8,8 +8,8 @@
 void init_menus_or_reset(void)
 {
     s32 i;
-    current_menu = ~MENU_LEGAL_SCREEN;
-    maybe_prev_menu = ~MENU_LEGAL_SCREEN;
+    current_menu = MENU_INVALID;
+    maybe_prev_menu = MENU_INVALID;
     screen_size = SCREEN_SIZE_320x240;
     spectrum_related_flag = TRUE;
     is_emulating_spectrum = FALSE;

@@ -1,6 +1,6 @@
 {
  "_comment": "Default of every config key. Source of truth for the options menu AND for the first-run ini: defaultsApply() sets these before configLoad(). A bare value applies to every platform; {\"switch\": n, \"pc\": n} per platform (a missing side = no default there); \"why\" is for people. After editing run tools_pc/gen_menudata.py. \"version\" is the ini's (Config.Version); a migration lists steps for inis older than its version: {\"key\",\"set\"|\"reset\",\"when\":{\"key\",\"eq\"}}. \"legacy\" keys are removed from the game but still read once, so a migration can look at them.",
- "version": 2,
+ "version": 3,
  "migrations": [
   {
    "version": 1,
@@ -27,6 +27,11 @@
   {
    "version": 2,
    "why": "The Enhanced and Original control styles are gone: Modern is the only one. Their keys (Input.ControlScheme, Input.PadPreset, Input.Pad*.*, Input.N64Pad*.*, Input.N64StickFeel) are no longer read; an old ini keeps them unused.",
+   "steps": []
+  },
+  {
+   "version": 3,
+   "why": "The intro screens (legal page, Nintendo, Rare and GoldenEye logos, gun barrel) and the attract demos are gone: the game opens on the profile select, so Game.SkipIntro is no longer read; an old ini keeps it unused.",
    "steps": []
   }
  ],
@@ -223,10 +228,6 @@
   "Video.CrosshairHealthColor": {
    "value": 0,
    "why": "= 0 (off, D511)"
-  },
-  "Game.SkipIntro": {
-   "value": 0,
-   "why": "= 0"
   },
   "Game.CheckUpdates": {
    "value": 0,

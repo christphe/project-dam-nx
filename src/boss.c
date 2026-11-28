@@ -36,7 +36,6 @@
 #include "game/bg.h"
 #include "game/debugmenu_handler.h"
 #include "game/lv.h"
-#include "game/ramromreplay.h"
 #include "game/rsp.h"
 #include "game/stan.h"
 #include "game/textrelated.h"
@@ -312,7 +311,6 @@ void bossInitMainthreadData(void)
     init_player_gait_object();
     initGameData();
     fileResetRamRomSave();
-    clear_ramrom_block_buffer_heading_ptrs();
 }
 
 /**
@@ -441,7 +439,6 @@ void bossMainloop(void)
         toggleFlag = 0;
         pendingGfx = 0;
 
-        test_if_recording_demos_this_stage_load(g_StageNum, lvlGetSelectedDifficulty());
         if (g_DebugAndUpdateStageFlag)
         {
             stringIndex = -1;
@@ -631,14 +628,7 @@ void bossMainloop(void)
                     {
                         if (g_MainStageNum < 0 && pendingGfx < 2U)
                         {
-                            if (get_is_ramrom_flag())
-                            {
-                                iterate_ramrom_entries_handle_camera_out();
-                            }
-                            else
-                            {
-                                waitForNextFrame();
-                            }
+                            waitForNextFrame();
 
                             speedgraphRenderGraph();
                             speedgraphMarkerCommit();
@@ -863,7 +853,6 @@ void bossMainloop(void)
         }
 
         lvlUnloadStageTextData();
-        stop_demo_playback();
         mempNullNextEntryInBank(MEMPOOL_STAGE);
         obBlankResourcesLoadedInBank(MEMPOOL_STAGE);
 

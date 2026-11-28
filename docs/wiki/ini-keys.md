@@ -74,7 +74,6 @@ option's position or its `value` in `menu.json`.
 | `Game.MissionTimer` | 0 | 0 | Game > Gameplay > Mission timer |
 | `Game.NoHitFlash` | 0 | 0 | Game > Gameplay > No hit flash |
 | `Game.ScreenShakeIntensity` | 1 | 1 | Video > Effects > Explosion shake |
-| `Game.SkipIntro` | 0 | 0 | Game > Gameplay > Skip intro |
 | `Game.SplitScreen` | 0 | 0 | Video > Display > Split screen |
 | `Input.CrosshairCursor` | 1 | 1 | Input > Mouse > Crosshair pointer |
 | `Input.CrouchMode` | 1 | 1 | Input > Controls > Crouch |
