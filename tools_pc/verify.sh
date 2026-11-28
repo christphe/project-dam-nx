@@ -265,16 +265,30 @@ ROMID="${ROMID:-ntsc-final}"
 for need in "ge007.$ROMID.z64" "pccg-$ROMID" "pcmodels-$ROMID"; do
   [ -e "$DATA_SRC/$need" ] || { echo "error: $DATA_SRC/$need missing (needed to build the per-run work dir; set GE_ROMID to pick another region)" >&2; exit 2; }
 done
-# stage_workdir DIR -> populate DIR/data (the game creates DIR/ppm itself)
+# GE_ASSETPACKS: the folder holding the base asset pack ge007.passets (the game reads its textures, text, fonts, sounds,
+# music and level decor from it); default: assetpacks/ next to $DATA_SRC, where the game writes it at its first launch.
+# Each work dir gets it (a hard link when the file system allows) and an ini that enables it. Without it, the game
+# writes the pack again in every work dir (a few seconds per level).
+PACKS_SRC="${GE_ASSETPACKS:-$(dirname "$DATA_SRC")/assetpacks}"
+BASE_PACK=""
+if [ -e "$PACKS_SRC/ge007.passets" ]; then
+  BASE_PACK="$PACKS_SRC/ge007.passets"
+else
+  echo "warning: no $PACKS_SRC/ge007.passets (set GE_ASSETPACKS, or run the game once): each level writes the base pack first" >&2
+fi
+# stage_workdir DIR -> populate DIR/data and DIR/assetpacks (the game creates DIR/ppm itself)
 stage_workdir() {
   local d="$1"
   mkdir -p "$d/data" &&
   cp "$DATA_SRC/ge007.$ROMID.z64" "$d/data/" &&
   cp -r "$DATA_SRC/pccg-$ROMID" "$DATA_SRC/pcmodels-$ROMID" "$d/data/" &&
   cp "$CANON_EEP" "$d/data/ge007.eep" &&
+  { [ -z "$BASE_PACK" ] || { mkdir -p "$d/assetpacks" &&
+      { cp -rl "$BASE_PACK" "$d/assetpacks/" 2>/dev/null || cp -r "$BASE_PACK" "$d/assetpacks/"; }; }; } &&
   # Video.DeckPresetApplied: the D283 Steam Deck preset would otherwise switch
   # a fresh ini to fullscreen 1280x800 on a Deck, and no frame would compare.
   printf '[Window]\nWidth = 640\nHeight = 480\n[Video]\nDeckPresetApplied = 1\n' > "$d/data/ge007.ini" &&
+  { [ -z "$BASE_PACK" ] || printf 'AssetPacks = ge007.passets\n' >> "$d/data/ge007.ini"; } &&
   # VERIFY_INI_EXTRA: extra ini lines for an option-specific gate (D578:
   # '[Video]\nFpsCap = 120\nVSync = 0'); the goldens are captured without it.
   { [ -z "${VERIFY_INI_EXTRA:-}" ] || printf '%b\n' "$VERIFY_INI_EXTRA" >> "$d/data/ge007.ini"; }
