@@ -291,18 +291,10 @@ s32 stop_time_flag = 0;
 f32 camera_transition_timer = 0;
 //D:800364A8
 s32 intro_camera_index = 1;
-//D:800364AC
-struct SetupIntroSwirl *g_IntroSwirl = NULL;
 //D:800364B0
 s32 is_timer_active = 1;
 //D:800364B4
 bool g_PlayerInvincible = FALSE;
-//D:800364B8
-struct SetupIntroCamera* g_CurrentSetupIntroCamera = NULL;
-//D:800364BC
-s32 g_SetupIntroCameraCount = 0;
-//D:800364C0
-struct SetupIntroCamera *ptr_random06cam_entry = NULL;
 
 /**
  * Flag to toggle invisibility cheat.
@@ -348,22 +340,6 @@ s32 g_bondviewBondDeathAnimationsCount = 0;
 
 //D:80036510
 enum CAMERAMODE camera_mode = CAMERAMODE_NONE;
-//D:80036514
-s32 g_IntroAnimationIndex = 0;
-
-//D:80036518
-struct struct_4 stage_intro_anim_table[] = {
-    {PTR_ANIM_extending_left_hand, 95.0, -1.0, 0.02},
-    {PTR_ANIM_fire_standing_draw_one_handed_weapon_fast, 7.0, 40.0, 0.5},
-    {PTR_ANIM_draw_one_handed_weapon_and_look_around, 0.0, -1.0, 0.5},
-    {PTR_ANIM_draw_one_handed_weapon_and_stand_up, 0.0, -1.0, 0.5},
-    {PTR_ANIM_aim_one_handed_weapon_left_right, 0.0, -1.0, 0.5},
-    {PTR_ANIM_cock_one_handed_weapon_and_turn_around, 0.0, -1.0, 0.5},
-    {PTR_ANIM_cock_one_handed_weapon_turn_around_and_stand_up, 0.0, -1.0, 0.5},
-    {PTR_ANIM_draw_one_handed_weapon_and_turn_around, 0.0, -1.0, 0.5},
-    {PTR_ANIM_bond_eye_fire_alt, 0.0, -1.0, 0.5}
-};
-
 //D:800365A8
 f32 watch_transition_time = 0.90909088;
 
@@ -614,7 +590,6 @@ void currentPlayerAdjustCrouchPos(s32 value);
 void bondviewUpdateSpeedSideways(s32 arg0);
 void bondviewUpdateSpeedForwards(s32 arg0);
 void bondviewFrozenCameraTick(u16 buttons, u16 oldbuttons, struct coord3d *pos, struct coord3d *pos2, struct coord3d *offset, struct StandTile **stan, struct coord3d *arg6);
-void bondviewCalcIntroSwirlCamera(s32, f32, struct coord3d *, struct coord3d *);
 s32 pickDeathCameraAngles(PropRecord *prop1, coord3d *pos, PropRecord *prop2, coord3d *collision_pos, StandTile *tile, f32 camera_dist);
 Gfx* hudmsgBottomRender(Gfx* arg0);
 Gfx *sub_GAME_7F08AAE8(Gfx *gdl);

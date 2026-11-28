@@ -208,7 +208,9 @@ static void hFinish(void *ud)
     if (!S.active) return;
     forAll(doEnd, NULL);
     countdownTimerSetVisible(16, TRUE);
-    is_timer_active = S.savedTimer;
+    /* AI_BondEnableControl: control is back, always. Not "what it was at begin": a scene begun while the level loads sees
+     * the title screen's leftover 0 (the level's own init sets 1 after), and restoring that froze the players for good. */
+    is_timer_active = TRUE;
     g_PlayerInvincible = S.savedInvincible;
     hHideAllChrs(ud, 0);
     for (p = 0; p < NO_PLAYER_SLOTS; p++)
@@ -1072,7 +1074,6 @@ void missionsHostCinemaTick(void)
 {
     const u32 m = bondviewGetCameraMode();
     int p;
-
     camLog(m);
     cameraReturnTick();
     for (p = 0; p < NO_PLAYER_SLOTS; p++)

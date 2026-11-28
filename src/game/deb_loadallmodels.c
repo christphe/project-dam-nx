@@ -5,7 +5,6 @@
 #include "chr_b.h"
 #include "deb_loadallmodels.h"
 #include "loadobjectmodel.h"
-#include "aicommands2.h"
 #include "dyn.h"
 #include "memp.h"
 #include <macro.h>
@@ -87,59 +86,6 @@ void alloc_false_GUARDdata_to_exec_global_action(void)
             i++;
         }
     }
-}
-
-
-void debug_object_load_all_models(void)
-{
-    u8 *cmd = &g_CurrentSetup.ailists[0].ailist->cmd;
-    s32 i = 0;
-    u16 id;
-
-    if (!cmd) { return; }
-
-    do
-    {
-        while (TRUE)
-        {
-            if (cmd[0] == AI_EndList)
-            {
-                break;
-            }
-
-            switch (cmd[0])
-            {
-                case AI_TRYDroppingItem:
-                    id = cmd[2] | (cmd[1] << 8);
-                    if (modelLoad(id)) osSyncPrintf("loaded dropguntype obj=%d", id);
-                    break;
-
-                case AI_TRYSpawningChrAtPad:
-                    if (load_body_head_if_not_loaded(cmd[1])) osSyncPrintf("loaded createchrhead obj=%d (body)", cmd[1]);
-                    if ((s8)cmd[2] >= 0 && load_body_head_if_not_loaded((s8)cmd[2])) osSyncPrintf("loaded createchrhead obj=%d (head)", cmd[2]);
-                    break;
-
-                case AI_TRYSpawningChrNextToChr:
-                    if (load_body_head_if_not_loaded(cmd[1])) osSyncPrintf("loaded createchrheadatchr obj=%d (body)", cmd[1]);
-                    if ((s8)cmd[2] >= 0 && load_body_head_if_not_loaded((s8)cmd[2])) osSyncPrintf("loaded createchrheadatchr obj=%d (head)", cmd[2]);
-                    break;
-
-                case AI_TRYGiveMeItem:
-                    if (modelLoad(cmd[2] | (cmd[1] << 8))) osSyncPrintf("loaded createweaponheldchr obj=%d", cmd[2] | (cmd[1] << 8));
-                    if (weaponLoadProjectileModels(cmd[3])) osSyncPrintf("loaded createweaponheldchr obj=%d (ammo)", cmd[2] | (cmd[1] << 8));
-                    break;
-
-                case AI_TRYGiveMeHat:
-                    if (modelLoad(cmd[2] | (cmd[1] << 8))) osSyncPrintf("loaded createhatonchr obj=%d", cmd[2] | (cmd[1] << 8));
-                    break;
-            }
-
-            cmd += chraiitemsize(cmd, 0);
-        }
-
-        i++;
-        cmd = &g_CurrentSetup.ailists[i].ailist->cmd;
-    } while (cmd);
 }
 
 

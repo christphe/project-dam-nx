@@ -58,14 +58,11 @@
  *   "keep_level_objectives": false,               optional: true = the level keeps its own briefing, objectives and end of
  *                                                 mission; this mission's "objectives" (and objectives.add) come after the level's
  *                                                 and must be complete too before the level's exit ends the mission
- *   "level_ai": false,                            optional (default true): false = every AI list of the level's setup (its
- *                                                 character and background lists) is emptied, so only the mission's scripts
- *                                                 drive its guards, vehicles and story (the Luau campaign, #165). The game's
- *                                                 18 global lists are code, not setup data: they stay
- *   "level_intro": false,                         optional (default true): false = the setup's intro cameras, swirl and
- *                                                 intro animation are removed (its start pad, items, ammo, outfit and
- *                                                 watch time stay), so the level starts in play and a script stages
- *                                                 the intro with the camera API (#165)
+ *   "level_ai": false,                            accepted and ignored: the game has no native AI interpreter any more;
+ *                                                 guards, vehicles and story are driven by the mission's Luau scripts
+ *   "level_intro": false,                         accepted and ignored: the game has no native intro (swirl, fixed
+ *                                                 cameras) any more; a level starts in play and a script stages its intro
+ *                                                 with the camera API
  *   "pads": [                                    new pads; referenced by their string id
  *     { "id": "p1", "pos": [x, y, z], "look": [x, y, z], "room": 12 }
  *   ],

@@ -77,6 +77,7 @@ int main(void)
     if (!t || !*t) t = getenv("TMPDIR");
     if (!t || !*t) t = "/tmp";
     snprintf(tmp, sizeof tmp, "%s/ge_tex_test", t);
+    for (char *c = tmp; *c; c++) if (*c == '\\') *c = '/';   /* a Windows TEMP has backslashes; geTexBaseRoot answers with slashes */
     snprintf(packs, sizeof packs, "%s/assetpacks", tmp);
     snprintf(base, sizeof base, "%s/ge007.passets", packs);
     snprintf(hd, sizeof hd, "%s/hd.passets", packs);

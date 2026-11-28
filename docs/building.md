@@ -121,14 +121,6 @@ writable one. If MSYS2 is not installed at `C:\msys64`, set
 install location). Re-exec logs:
 `build-pc/ge007-native-reexec-*.log`.
 
-For PAL/JP you must first generate that region's ROM-asset symbol file
-(the US one is committed):
-
-```sh
-python3 scripts/gen_romassets.py e     # PAL   -> port/src/romassets_e.s
-python3 scripts/gen_romassets.py j     # JP    -> port/src/romassets_j.s
-```
-
 The executable lands at `build-pc/ge007.x86_64` (`.exe` on Windows). PAL/JP
 builds are named `ge007.pal-final.x86_64` / `ge007.jpn-final.x86_64`.
 

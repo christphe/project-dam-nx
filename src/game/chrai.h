@@ -307,7 +307,6 @@ extern stagesetup                        *g_ptrStageSetupFile;
 extern char *setup_text_pointers[];
 
 void               alarmDeactivate(void);
-s32                chraiitemsize(u8 *AIList, s32 offset);
 void               check_deactivate_gas_sound(void);
 void               chrpropTick(void);
 void               propsTick(void);

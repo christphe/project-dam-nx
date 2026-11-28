@@ -139,7 +139,6 @@ s32 coopAnyCopiedGoldenEye(void);
 s32 coopChrIsPlayer(struct ChrRecord *chr);
 s32 coopAutoAimAtPlayer(void);
 void coopNpcHurt(struct ChrRecord *chr, f32 damage, f32 subroty, s32 item);
-s32 coopAiStep(void *list, s32 offset, s32 isPlayerTest);
 s32 coopBondBody(void);
 s32 coopProjSimOwner(s32 ownedByCurrent, struct PropRecord *ownerprop, s32 viewOwner);
 s32 coopSplitView(void);
@@ -181,10 +180,6 @@ void coopFrozenCamera(u16 buttons, u16 oldbuttons, struct coord3d *pos, struct c
 #define GE_PROP_FREED(prop)      coopPropFreed(prop)
 /* stage scripts ask "fewer than N players?" to tell a mission from a versus match: a co-op mission is a mission */
 #define GE_AI_PLAYERS()          (coopIsMission() ? 1 : getPlayerCount())
-/* AI commands that test a condition of "Bond" (position, pad distance, room, items): true if ANY living player meets it */
-#define GE_AI_IS_PLAYER_TEST(c)  ((c) == AI_IFBondYPosLessThan || (c) == AI_IFBondInRoomWithPad || \
-                                  (c) == AI_IFBondDistanceToPadLessThanDecimeter || (c) == AI_IFBondDistanceToPadGreaterThanDecimeter || \
-                                  (c) == AI_IFBondCollectedObject)
 #define GE_BOND_BODY()           (getPlayerCount() == 1 || coopBondBody())
 #define GE_PROJ_SIM_OWNER(own, op, view) coopProjSimOwner((own), (op), (view))
 #define GE_SPLIT_GE2()           (getPlayerCount() >= 2 && coopSplitView())

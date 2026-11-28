@@ -38,9 +38,8 @@ u32 get_inflateSegmentRomEnd(void)   { return 0; }
  * Linker segment boundary symbols.
  *
  * The ROM-backed ones (every _XSegment{Start,RomStart,RomEnd,End} from
- * ge007.ld, plus all obseg/ramrom/music asset labels) are now ABSOLUTE cart
- * addresses in the generated port/src/romassets_u.s — see
- * scripts/gen_romassets.py. romdata.c maps the .z64 at 0x10000000 so `&sym`
+ * the removed N64 linker script, plus all obseg/ramrom/music asset labels) are now ABSOLUTE cart
+ * addresses in port/src/romassets_u.s. romdata.c maps the .z64 at 0x10000000 so `&sym`
  * yields a live address and romCopy() works.
  *
  * What remains here are pure-RAM segment symbols that have no ROM presence:

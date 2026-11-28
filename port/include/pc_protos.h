@@ -179,7 +179,6 @@ void debmenuResetBuffer();
 void debmenuSetFgColour();
 void debmenuSetMenu();
 void debmenuSetPos();
-void debug_object_load_all_models();
 void debug_weapon_load_table();
 void default_player_perspective_and_height();
 Gfx * display_red_blue_on_radar();

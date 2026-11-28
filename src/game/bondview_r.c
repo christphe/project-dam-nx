@@ -101,13 +101,11 @@ void bondviewLoadSetupIntroSection(void)
     StandTile *start_stan;
     struct SetupIntroEmpty *intro_record;
     s32 set_starting_weapon;
-    s32 rand_camera_index;
     CreditsEntry *credits;
     s32 rand_pad_index;
     f32 stan_height;
     s32 i;
     struct SetupIntroItem *intro_item;
-    struct SetupIntroSwirl *intro_swirl;
     struct SetupIntroWatch *intro_watch;
     struct SetupIntroCredits *intro_credits;
     s32 padding[5];
@@ -167,13 +165,8 @@ void bondviewLoadSetupIntroSection(void)
     stop_time_flag = 0;
     camera_transition_timer = FLOAT_INIT;
     intro_camera_index = CAMERAMODE_INTRO;
-    g_IntroSwirl = NULL;
-    ptr_random06cam_entry = NULL;
-    g_CurrentSetupIntroCamera = NULL;
-    g_SetupIntroCameraCount = 0;
     mission_timer = 0;
     watch_time_0 = 0;
-    g_IntroAnimationIndex = 0;
     watch_transition_time = 0.9090909f;
     starting_weapon[GUNLEFT] = ITEM_UNARMED;
     starting_weapon[GUNRIGHT] = ITEM_UNARMED;
@@ -259,19 +252,7 @@ void bondviewLoadSetupIntroSection(void)
 
                 case INTROTYPE_SWIRL:
                 {
-                    intro_swirl = (struct SetupIntroSwirl*)intro_record;
-
-                    if (g_IntroSwirl == NULL)
-                    {
-                        g_IntroSwirl = intro_swirl;
-                    }
-
-                    intro_swirl->unk08.fval = intro_swirl->unk08.ival / M_U16_MAX_VALUE_F;
-                    intro_swirl->unk0C.fval = intro_swirl->unk0C.ival / M_U16_MAX_VALUE_F;
-                    intro_swirl->unk10.fval = intro_swirl->unk10.ival / M_U16_MAX_VALUE_F;
-                    intro_swirl->unk14.fval = intro_swirl->unk14.ival / M_U16_MAX_VALUE_F;
-                    intro_swirl->unk18.fval = intro_swirl->unk18.ival / M_U16_MAX_VALUE_F;
-
+                    /* the intro swirl is not read any more: the intro lives in the campaign mod's Luau */
 #ifdef PORT
                     intro_record = (struct SetupIntroEmpty*)((uintptr_t)intro_record + sizeof(struct SetupIntroSwirl));
 #else
@@ -282,8 +263,6 @@ void bondviewLoadSetupIntroSection(void)
 
                 case INTROTYPE_ANIM:
                 {
-                    g_IntroAnimationIndex = ((struct SetupIntroAnim*)intro_record)->intro_anim;
-
 #ifdef PORT
                     intro_record = (struct SetupIntroEmpty*)((uintptr_t)intro_record + sizeof(struct SetupIntroAnim));
 #else
@@ -306,39 +285,7 @@ void bondviewLoadSetupIntroSection(void)
 
                 case INTROTYPE_CAMERA:
                 {
-                    if (get_cur_playernum() == 0)
-                    {
-#ifdef PORT
-                        /* D88: prev/lang_ptr are u32 on PORT (see SetupIntroCamera). */
-                        ((struct SetupIntroCamera*)intro_record)->prev = (u32)(uintptr_t)g_CurrentSetupIntroCamera;
-#else
-                        ((struct SetupIntroCamera*)intro_record)->prev = g_CurrentSetupIntroCamera;
-#endif
-                        g_CurrentSetupIntroCamera = (struct SetupIntroCamera*)intro_record;
-                        g_SetupIntroCameraCount = g_SetupIntroCameraCount + 1;
-
-                        ((struct SetupIntroCamera*)intro_record)->unk04.fval = ((struct SetupIntroCamera*)intro_record)->unk04.ival / 100.0f;
-                        ((struct SetupIntroCamera*)intro_record)->unk08.fval = ((struct SetupIntroCamera*)intro_record)->unk08.ival / 100.0f;
-                        ((struct SetupIntroCamera*)intro_record)->unk0C.fval = ((struct SetupIntroCamera*)intro_record)->unk0C.ival / 100.0f;
-                        ((struct SetupIntroCamera*)intro_record)->unk10.fval = ((struct SetupIntroCamera*)intro_record)->unk10.ival / M_U16_MAX_VALUE_F;
-                        ((struct SetupIntroCamera*)intro_record)->unk14.fval = ((struct SetupIntroCamera*)intro_record)->unk14.ival / M_U16_MAX_VALUE_F;
-
-#ifdef PORT
-                        ((struct SetupIntroCamera*)intro_record)->lang1c.lang_ptr = (u32)(uintptr_t)langGet(((struct SetupIntroCamera*)intro_record)->lang1c.lang_index[1]);
-#else
-                        ((struct SetupIntroCamera*)intro_record)->lang1c.lang_ptr = langGet(((struct SetupIntroCamera*)intro_record)->lang1c.lang_index[1]);
-#endif
-
-                        if (((struct SetupIntroCamera*)intro_record)->lang20.lang_index != 0)
-                        {
-#ifdef PORT
-                            ((struct SetupIntroCamera*)intro_record)->lang20.lang_ptr = (u32)(uintptr_t)langGet((u16)((struct SetupIntroCamera*)intro_record)->lang20.lang_index);
-#else
-                            ((struct SetupIntroCamera*)intro_record)->lang20.lang_ptr = langGet((u16)((struct SetupIntroCamera*)intro_record)->lang20.lang_index);
-#endif
-                        }
-                    }
-
+                    /* the fixed intro cameras are not read any more (see INTROTYPE_SWIRL) */
 #ifdef PORT
                     intro_record = (struct SetupIntroEmpty*)((uintptr_t)intro_record + sizeof(struct SetupIntroCamera));
 #else
@@ -416,36 +363,6 @@ void bondviewLoadSetupIntroSection(void)
         }
     }
 
-    if (g_CurrentSetupIntroCamera != NULL)
-    {
-        ptr_random06cam_entry = g_CurrentSetupIntroCamera;
-        rand_camera_index = (s32)(randomGetNext() % (u32) g_SetupIntroCameraCount);
-#ifdef PORT
-        /* TEMP D306 (M-201): test-only override of the first intro camera,
-         * GE_INTROCAM=<n> (n < count). The PRNG draw above still happens, so
-         * the rest of the random sequence is unchanged. Inert unset. */
-        {
-            extern char *getenv(const char *name);
-            extern int atoi(const char *s);
-            const char *ic = getenv("GE_INTROCAM");
-            if (ic) {
-                osSyncPrintf("D306: intro camera index %d of %d\n", (int)rand_camera_index,
-                             (int)g_SetupIntroCameraCount);
-                rand_camera_index = (s32)((u32)atoi(ic) % (u32)g_SetupIntroCameraCount);
-            }
-        }
-#endif
-        while (rand_camera_index > 0)
-        {
-            rand_camera_index--;
-#ifdef PORT
-            /* D88/MACOS-ADDR-WINDOW: prev is a u32 holding the truncated host pointer; re-base. */
-            ptr_random06cam_entry = PORT_N64PTR(struct SetupIntroCamera, ptr_random06cam_entry->prev);
-#else
-            ptr_random06cam_entry = ptr_random06cam_entry->prev;
-#endif
-        }
-    }
 
     bondinvAddInvItem(ITEM_FIST);
 #ifdef PORT
