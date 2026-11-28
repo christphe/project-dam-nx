@@ -123,7 +123,7 @@ option's position or its `value` in `menu.json`.
 | `Video.SafeAreaCrop` | 1 | 1 | Video > Display > Crop overscan |
 | `Video.SkyScale` | — | 0 | Video > Performance > Sky and sea detail |
 | `Video.TextureFilter` | 1 | 1 | Video > Performance > Texture filter |
-| `Video.AssetPacks` | "" | "" | Video > Asset packs: every known pack, file names in `assetpacks/` (or `texturepacks/`), highest priority first, `;`-separated, a disabled pack prefixed `-` (`ge007.passets;-test.passets`); a value without `-` means all enabled; not in `defaults.json`: empty means none. An older `Video.TexturePack` moves into it once (`docs/specs/asset-packs.md`) |
+| `Video.AssetPacks` | "" | "" | Video > Asset packs: every known pack, file names in `assetpacks/` (or `texturepacks/`), highest priority first, `;`-separated, a disabled pack prefixed `-` (`ge007.passets;-test.passets`); a value without `-` means all enabled; not in `defaults.json`: empty (never set) means every pack found is enabled. An older `Video.TexturePack` moves into it once (`docs/specs/asset-packs.md`) |
 | `Video.VSync` | 1 | 1 | Video > Performance > VSync |
 | `Video.Visuals` | 2 | 2 | Video > Display > Visuals |
 
