@@ -29,6 +29,7 @@
 #include "player.h"
 #ifdef PORT
 #include "portfx.h"
+#include "leveldecor.h"   /* issue #171: room decor from the asset packs */
 #endif
 #include "stan.h"
 #include "explosion.h"
@@ -2997,7 +2998,18 @@ Gfx *bgRenderRoomPrimary(Gfx *gdl, s32 room_index)
             gdl = applyRoomMatrixToDisplayList(gdl, room_index);
 
             gSPSegment(gdl++, SPSEGMENT_BG_VTX, OS_K0_TO_PHYSICAL(g_BgRoomInfo[room_index].vertices));
+#ifdef PORT
+            /* issue #171: the room's decor from the asset packs (port/include/leveldecor.h); GE_ROM_LEVELS=1 keeps the list */
+            if (leveldecorPrepare()) {
+                gSPLevelDecor(gdl++, room_index, 0);
+            } else {
+                if (leveldecorStatsOn()) gSPLevelDecor(gdl++, room_index, 0 | (LD_MARK_ROM_BEGIN >> 16));
+                gSPDisplayList(gdl++, OS_K0_TO_PHYSICAL(g_BgRoomInfo[room_index].ptr_expanded_mapping_info));
+                if (leveldecorStatsOn()) gSPLevelDecor(gdl++, room_index, 0 | (LD_MARK_ROM_END >> 16));
+            }
+#else
             gSPDisplayList(gdl++, OS_K0_TO_PHYSICAL(g_BgRoomInfo[room_index].ptr_expanded_mapping_info));
+#endif
 
             // Set the room's state to "loaded"
             g_BgRoomInfo[room_index].model_bin_loaded = 1;
@@ -3032,7 +3044,17 @@ Gfx *bgRenderRoomSecondary(Gfx *gdl, s32 room_index)
             gdl = applyRoomMatrixToDisplayList(gdl, room_index);
 
             gSPSegment(gdl++, SPSEGMENT_BG_VTX, OS_K0_TO_PHYSICAL(g_BgRoomInfo[room_index].vertices));
+#ifdef PORT
+            if (leveldecorPrepare()) {   /* issue #171, as bgRenderRoomPrimary */
+                gSPLevelDecor(gdl++, room_index, 1);
+            } else {
+                if (leveldecorStatsOn()) gSPLevelDecor(gdl++, room_index, 1 | (LD_MARK_ROM_BEGIN >> 16));
+                gSPDisplayList(gdl++, OS_K0_TO_PHYSICAL(g_BgRoomInfo[room_index].ptr_secondary_expanded_mapping_info));
+                if (leveldecorStatsOn()) gSPLevelDecor(gdl++, room_index, 1 | (LD_MARK_ROM_END >> 16));
+            }
+#else
             gSPDisplayList(gdl++, OS_K0_TO_PHYSICAL(g_BgRoomInfo[room_index].ptr_secondary_expanded_mapping_info));
+#endif
 
             // Set the room's state to "loaded"
             g_BgRoomInfo[room_index].model_bin_loaded = 1;
